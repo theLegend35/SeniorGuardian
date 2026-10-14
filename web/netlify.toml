@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = ".next"
 
+# The app lives in web/, so Netlify does not install the Next.js runtime on its own.
+# Without it, the deploy is only the raw .next folder and every page is a 404.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
 [build.environment]
   NODE_VERSION = "22"
   # The model name and the public Supabase values are written into the app on purpose.
