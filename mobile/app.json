@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Senior Guardian",
+    "slug": "senior-guardian",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "seniorguardian",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f3efe6",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "test.seniorhelp.guardian",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "package": "test.seniorhelp.guardian",
+      "adaptiveIcon": {
+        "backgroundColor": "#062826",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-splash-screen",
+      [
+        "expo-notifications",
+        {
+          "color": "#0b564e"
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Senior Guardian uses your location to find urgent care, pharmacies, and clinics nearby."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Senior Guardian uses the microphone so you can speak a question to the health assistant.",
+          "speechRecognitionPermission": "Senior Guardian turns your speech into text so you can ask without typing.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
