@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { MedicationTable } from "@/components/health/ChartSections";
 import { DateTile } from "@/components/ui/primitives";
-import { dayParts, formatWhen, relativeDay, shortDate, timeAgo } from "@/lib/time";
+import { appWallTime, dayParts, formatWhen, localDate, relativeDay, shortDate, timeAgo } from "@/lib/time";
 import type { Medication } from "@/types/domain";
 
 test("date formatters do not throw when a medicine has no start date", () => {
@@ -41,4 +41,13 @@ test("the medicine list still renders when a start date was never saved", () => 
   assert.match(html, /Dr\. Marcus Hale/);
   assert.doesNotMatch(html, /since/);
   assert.match(renderToStaticMarkup(createElement(DateTile, { iso: "" })), /—/);
+});
+
+test("a Central evening is still the same day after midnight UTC", () => {
+  const evening = new Date("2026-10-15T00:15:00.000Z");
+  assert.equal(localDate(evening), "2026-10-14");
+  assert.equal(appWallTime("2026-10-14T08:00").toISOString(), "2026-10-14T13:00:00.000Z");
+  assert.ok(appWallTime("2026-10-14T08:00").getTime() <= evening.getTime());
+  assert.ok(appWallTime("2026-10-14T21:00").getTime() > evening.getTime());
+  assert.equal(appWallTime("2026-01-15T06:00").toISOString(), "2026-01-15T12:00:00.000Z");
 });

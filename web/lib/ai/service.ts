@@ -8,7 +8,7 @@ import { safetyResponse } from "@/lib/ai/safety";
 import { reminderBlockReason } from "@/lib/medications/schedule";
 import type { AssistantAnswer, HistoryTurn, LabelReading, PatientContext } from "@/lib/ai/types";
 import { analyzeConcernLocal, STANDARD_WARNING_SIGNS, urgencyFromText } from "@/lib/ai/vision";
-import { localDate } from "@/lib/time";
+import { APP_TIME_ZONE, localDate } from "@/lib/time";
 import type { ConcernAnalysis, ProposedAction } from "@/types/domain";
 
 const AMOUNT = /(\d+(?:[.,]\d+)?)\s*(mg|mcg|µg|g|ml|units?|iu|tablets?|capsules?|pills?|puffs?|drops?)\b/gi;
@@ -77,7 +77,7 @@ export async function assistantReply(question: string, context: PatientContext, 
 
   const now = new Date();
   const record = {
-    today: `${localDate(now)} ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`,
+    today: `${localDate(now)} ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: APP_TIME_ZONE })}`,
     ...context,
   };
   const messages: ChatMessage[] = [

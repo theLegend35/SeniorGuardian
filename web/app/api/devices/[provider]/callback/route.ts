@@ -13,6 +13,18 @@ import { openDeviceState } from "@/lib/devices/state";
 
 export const dynamic = "force-dynamic";
 
+/** Withings opens the registered URL with no sign-in and rejects anything other than 200. */
+function callbackReady() {
+  return new NextResponse("OK", {
+    status: 200,
+    headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+
+export function HEAD() {
+  return new NextResponse(null, { status: 200, headers: { "Cache-Control": "no-store" } });
+}
+
 function appReturn(provider: string, link: string) {
   const url = new URL("seniorguardian://patient/devices");
   url.searchParams.set("link", link);
@@ -25,8 +37,10 @@ function appReturn(provider: string, link: string) {
 export async function GET(request: Request, context: { params: Promise<{ provider: string }> }) {
   const { provider } = await context.params;
   const requestUrl = new URL(request.url);
-  const state = await openDeviceState(requestUrl.searchParams.get("state") ?? undefined);
   const code = requestUrl.searchParams.get("code");
+  const stateValue = requestUrl.searchParams.get("state");
+  if (!code && !stateValue && !requestUrl.searchParams.get("error")) return callbackReady();
+  const state = await openDeviceState(stateValue ?? undefined);
   if (state?.client === "phone") {
     const name = isCloudProvider(provider) ? provider : "";
     if (!name || !code) return appReturn(name, "failed");

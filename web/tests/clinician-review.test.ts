@@ -113,15 +113,14 @@ test("a clinician visit or note is drafted only from their words and an authoriz
   assert.equal(draftClinicianRequest("Schedule a visit for someone else with Dr. Hale on 2026-10-20 at 10:00", patients), null);
   assert.equal(draftClinicianRequest("Change Lisinopril to 20 mg", patients), null);
   const clock = wallClock("2026-10-20T10:00:00Z");
-  assert.equal(clock?.getHours(), 10);
-  assert.equal(clock?.getDate(), 20);
+  assert.equal(clock?.toISOString(), "2026-10-20T15:00:00.000Z");
 });
 
 test("a clinician greeting and visit question stay plain", () => {
   assert.match(clinicianFallback("hello", "", []), /Hello/);
   assert.doesNotMatch(clinicianFallback("hello", "", []), /not in the saved records|cannot change a dose|given you access/);
   const visits = [
-    { patientName: "Eleanor Walsh", startsAt: "2026-10-14T15:30:00.000Z", location: "Riverside Family Clinic, 410 Oak Street" },
+    { patientName: "Eleanor Walsh", startsAt: "2026-10-21T15:30:00.000Z", location: "Riverside Family Clinic, 410 Oak Street" },
     { patientName: "Eleanor Walsh", startsAt: "2026-10-20T15:00:00.000Z", location: "Riverside Family Clinic" },
     { patientName: "Ruth Alvarez", startsAt: "2026-10-18T15:00:00.000Z", location: "Riverside Family Clinic, 410 Oak Street" },
   ];

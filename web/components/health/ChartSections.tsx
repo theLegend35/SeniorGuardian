@@ -5,17 +5,17 @@ import { PrescriptionEditor } from "@/components/health/PrescriptionEditor";
 import { AppointmentRow, fileUrl } from "@/components/health/records";
 import { AiBlock, Badge, EmptyState, FormattedText, SourceBlock, cx } from "@/components/ui/primitives";
 import type { PatientChart } from "@/lib/data/types";
-import { formatTime, formatWhen, shortDate } from "@/lib/time";
+import { appWallTime, formatTime, formatWhen, shortDate } from "@/lib/time";
 import type { Medication, MedicationEvent, Prescription } from "@/types/domain";
 
 function adherence(med: Medication, events: MedicationEvent[]): { taken: number; expected: number } | null {
   if (!med.times.length) return null;
   const since = Date.now() - 7 * 86400000;
-  const start = new Date(`${med.startDate}T00:00:00`).getTime();
+  const start = appWallTime(`${med.startDate}T00:00`).getTime();
   const days = Math.max(0, Math.min(7, Math.floor((Date.now() - Math.max(since, Number.isNaN(start) ? since : start)) / 86400000)));
   const expected = days * med.times.length;
   if (!expected) return null;
-  const taken = events.filter((event) => event.medicationId === med.id && event.kind === "taken" && event.scheduledFor && new Date(event.scheduledFor).getTime() >= since).length;
+  const taken = events.filter((event) => event.medicationId === med.id && event.kind === "taken" && event.scheduledFor && appWallTime(event.scheduledFor).getTime() >= since).length;
   return { taken: Math.min(taken, expected), expected };
 }
 

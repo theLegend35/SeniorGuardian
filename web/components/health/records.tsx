@@ -21,7 +21,7 @@ import { AiBlock, Badge, Callout, DateTile, SourceBlock, URGENCY, UrgencyBadge, 
 import { markTakenAction } from "@/lib/actions/health";
 import { normalizeAnalysis } from "@/lib/ai/vision";
 import type { TodayDose } from "@/lib/data/types";
-import { dayParts, formatTime, formatWhen, relativeDay, timeAgo } from "@/lib/time";
+import { appWallTime, dayParts, formatTime, formatWhen, relativeDay, timeAgo } from "@/lib/time";
 import type { Appointment, HealthConcern, TimelineEvent, TimelineKind } from "@/types/domain";
 
 export const fileUrl = (id: string) => `/api/files/${id}`;
@@ -47,7 +47,7 @@ export function DoseProgress({ doses }: { doses: TodayDose[] }) {
 }
 
 export function DoseRow({ dose, canMark, detailHref }: { dose: TodayDose; canMark: boolean; detailHref?: string }) {
-  const due = !dose.taken && new Date(dose.scheduledFor) <= new Date();
+  const due = !dose.taken && appWallTime(dose.scheduledFor).getTime() <= Date.now();
   return (
     <li className={cx("flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3", dose.taken ? "border-line bg-canvas/70" : due ? "border-apricot-100 bg-apricot-50/60" : "border-line bg-white")}>
       <span

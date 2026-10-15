@@ -2,7 +2,7 @@ import { analyzeConcernLocal } from "@/lib/ai/vision";
 import { hashPassword } from "@/lib/auth/password";
 import { DEMO_PASSWORD, IDS } from "@/lib/demo/ids";
 import { practiceImage } from "@/lib/demo/practice-image";
-import { addDays, localDate } from "@/lib/time";
+import { addDays, localDate, localHour } from "@/lib/time";
 import type {
   CareMessage,
   AiConversation,
@@ -222,7 +222,7 @@ export function createSeed(now = new Date()): { db: DemoDatabase; files: SeedFil
         note: "Marked taken by the patient.",
         createdAt: addDays(now, -1, Number(time.slice(0, 2)), 6),
       });
-      if (time <= "08:00" && now.getHours() >= 9) {
+      if (time <= "08:00" && localHour(now) >= 9) {
         medicationEvents.push({
           id: crypto.randomUUID(),
           medicationId: item.id,

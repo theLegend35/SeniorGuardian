@@ -5,7 +5,7 @@ import { parseTime } from "@/lib/ai/chat";
 import { aiConfig, appendLimitNote, generateObject, imagePart, type ImageInput } from "@/lib/ai/provider";
 import { inventsAmounts } from "@/lib/ai/service";
 import type { HistoryTurn } from "@/lib/ai/types";
-import { formatWhen } from "@/lib/time";
+import { formatWhen, localDate, startOfNextLocalDay, zonedTime } from "@/lib/time";
 import type { ProposedAction } from "@/types/domain";
 
 const STOP = new Set(["what", "does", "this", "that", "with", "from", "have", "about", "their", "there", "which", "when", "where", "your", "show", "tell", "please", "record", "records", "analyze", "analysis"]);
@@ -159,13 +159,7 @@ function visitStart(question: string): string | null {
   const clock = parseTime(question) ?? "09:00";
   const iso = question.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   if (iso) return `${iso[1]}T${clock}`;
-  if (/\btomorrow\b/i.test(question)) {
-    const day = new Date();
-    day.setDate(day.getDate() + 1);
-    const month = String(day.getMonth() + 1).padStart(2, "0");
-    const date = String(day.getDate()).padStart(2, "0");
-    return `${day.getFullYear()}-${month}-${date}T${clock}`;
-  }
+  if (/\btomorrow\b/i.test(question)) return `${localDate(startOfNextLocalDay())}T${clock}`;
   return null;
 }
 
@@ -183,8 +177,8 @@ export function draftClinicianRequest(question: string, patients: ClinicianPatie
   const provider = question.match(/\bwith\s+(.+?)(?=\s+on\b|\s+at\b|\s+for\b|$)/i)?.[1]?.trim();
   const startsAt = visitStart(question);
   if (!provider || !startsAt) return null;
-  const starts = new Date(startsAt);
-  if (Number.isNaN(starts.getTime()) || starts.getTime() < Date.now() - 60_000) return null;
+  const starts = wallClock(startsAt);
+  if (!starts || starts.getTime() < Date.now() - 60_000) return null;
   const location = question.match(/\bat\s+([A-Z][^.\n]{2,80}?)\s*$/)?.[1]?.trim() ?? "";
   return {
     type: "add_appointment",
@@ -208,12 +202,11 @@ function draftCopy(action: ProposedAction): string {
   return "Nothing is saved until you confirm.";
 }
 
-/** The clock time in the clinician's request is local, even when a model adds a Z. */
+/** The clock time in the clinician's request is Central time, even when a model adds a Z. */
 export function wallClock(value: string): Date | null {
   const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})/);
   if (!match) return null;
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
-  return Number.isNaN(date.getTime()) ? null : date;
+  return zonedTime(Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5]));
 }
 
 function clinicianAction(action: z.infer<typeof ClinicianSchema>["action"], patients: ClinicianPatientRef[]): ProposedAction | null {
