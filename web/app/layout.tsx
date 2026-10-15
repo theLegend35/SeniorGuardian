@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible_Next, Manrope } from "next/font/google";
+import { Manrope } from "next/font/google";
 
 import { EarlyScripts } from "@/components/accessibility/EarlyScripts";
 import { HelpDock } from "@/components/accessibility/HelpDock";
@@ -8,15 +8,9 @@ import { tutorialFor, tutorialSteps } from "@/lib/auth/tutorial";
 
 import "./globals.css";
 
-const body = Atkinson_Hyperlegible_Next({
+const type = Manrope({
   subsets: ["latin"],
   variable: "--font-body",
-  display: "swap",
-});
-
-const heading = Manrope({
-  subsets: ["latin"],
-  variable: "--font-heading",
   display: "swap",
 });
 
@@ -34,7 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const actor = await currentActor();
   const pendingTour = actor ? await tutorialFor(actor) : null;
   return (
-    <html lang="en" data-scale={actor?.textScale ?? "default"} data-guest={actor ? undefined : ""} className={`${body.variable} ${heading.variable}`} suppressHydrationWarning>
+    <html lang="en" data-scale={actor?.textScale ?? "default"} data-guest={actor ? undefined : ""} className={type.variable} suppressHydrationWarning>
       <body className="min-h-dvh font-sans antialiased" suppressHydrationWarning>
         <EarlyScripts />
         {children}

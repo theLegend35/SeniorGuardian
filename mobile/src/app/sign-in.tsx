@@ -112,6 +112,11 @@ export default function SignIn() {
             ) : null}
             <Field label="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="you@example.com" />
             <Field label="Password" secureTextEntry autoComplete="password" value={password} onChangeText={setPassword} placeholder="Your password" />
+            <Pressable accessibilityRole="link" accessibilityLabel="Forgot password" onPress={() => router.push("/forgot")} hitSlop={6} style={{ alignSelf: "flex-end" }}>
+              <AppText size={15} weight="bold" color={colors.brand700}>
+                Forgot password?
+              </AppText>
+            </Pressable>
             <Button label="Sign in" icon={LogIn} size="lg" loading={pending === "form"} disabled={Boolean(pending)} onPress={() => void submit("form", email, password)} />
           </Card>
 

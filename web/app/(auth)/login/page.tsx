@@ -26,6 +26,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <input type="hidden" name="next" value={next ?? ""} />
           <Field label="Email" name="email" type="email" autoComplete="email" required />
           <Field label="Password" name="password" type="password" autoComplete="current-password" required />
+          <div className="-mt-1 text-right">
+            <Link href="/forgot" className="text-[0.95rem] font-semibold text-brand-700 underline-offset-4 hover:underline">
+              Forgot password?
+            </Link>
+          </div>
         </ActionForm>
       </div>
       <p className="mt-4 text-center text-ink-600">

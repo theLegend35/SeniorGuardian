@@ -50,11 +50,11 @@ export const colors = {
   white: "#ffffff",
 };
 
-/** Body text is Atkinson Hyperlegible Next, app headings are Manrope, and the homepage headlines are Instrument Serif. The website uses the same three. */
+/** Body text and headings use Manrope, so the zero is a plain circle. Homepage headlines use Instrument Serif. The website matches. */
 export const fonts = {
-  regular: "AtkinsonHyperlegibleNext_400Regular",
-  semibold: "AtkinsonHyperlegibleNext_600SemiBold",
-  bold: "AtkinsonHyperlegibleNext_700Bold",
+  regular: "Manrope_400Regular",
+  semibold: "Manrope_600SemiBold",
+  bold: "Manrope_700Bold",
   display: "Manrope_700Bold",
   displayHeavy: "Manrope_800ExtraBold",
   serif: "InstrumentSerif_400Regular",

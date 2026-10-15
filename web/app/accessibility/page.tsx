@@ -39,7 +39,7 @@ export default function AccessibilityPage() {
       <section className="mt-8 grid gap-3">
         <h2 className="text-[1.25rem] font-extrabold text-ink-950">Type</h2>
         <p className="text-[1.05rem] leading-relaxed text-ink-700">
-          Body text uses Atkinson Hyperlegible, a typeface drawn to stay readable at a distance and at larger sizes.
+          Body text uses Manrope. The zero is a plain circle, so a time or a dose does not have a line through it.
         </p>
       </section>
 

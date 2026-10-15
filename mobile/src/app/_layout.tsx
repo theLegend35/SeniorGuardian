@@ -1,10 +1,5 @@
-import {
-  AtkinsonHyperlegibleNext_400Regular,
-  AtkinsonHyperlegibleNext_600SemiBold,
-  AtkinsonHyperlegibleNext_700Bold,
-} from "@expo-google-fonts/atkinson-hyperlegible-next";
 import { InstrumentSerif_400Regular, InstrumentSerif_400Regular_Italic } from "@expo-google-fonts/instrument-serif";
-import { Manrope_700Bold, Manrope_800ExtraBold } from "@expo-google-fonts/manrope";
+import { Manrope_400Regular, Manrope_600SemiBold, Manrope_700Bold, Manrope_800ExtraBold } from "@expo-google-fonts/manrope";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -28,9 +23,8 @@ function SplashGate({ fontsReady, children }: { fontsReady: boolean; children: R
 
 export default function RootLayout() {
   const [loaded, failed] = useFonts({
-    AtkinsonHyperlegibleNext_400Regular,
-    AtkinsonHyperlegibleNext_600SemiBold,
-    AtkinsonHyperlegibleNext_700Bold,
+    Manrope_400Regular,
+    Manrope_600SemiBold,
     Manrope_700Bold,
     Manrope_800ExtraBold,
     InstrumentSerif_400Regular,
