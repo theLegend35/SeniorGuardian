@@ -100,7 +100,10 @@ export function AlarmMonitor() {
   if (!prompt && alarms.length === 0) return null;
 
   return (
-    <div className="fixed inset-x-3 bottom-24 z-40 grid gap-2 sm:left-auto sm:w-[24rem] lg:bottom-6 lg:right-6" aria-live="assertive">
+    <div
+      className="fixed inset-x-3 bottom-[max(7rem,calc(5rem+env(safe-area-inset-bottom)))] z-40 grid gap-2 sm:inset-x-auto sm:right-6 sm:w-[24rem]"
+      aria-live="assertive"
+    >
       {prompt ? (
         <div className="rounded-2xl border border-brand-200 bg-white p-4 shadow-raised">
           <div className="flex gap-3">
