@@ -138,9 +138,14 @@ export function PortalShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const nav = NAV[role];
-  const alerts: NavItem = { href: `/${role}/notifications`, label: "Alerts", icon: Bell, tour: "alerts" };
-  const settings: NavItem = { href: `/${role}/settings`, label: "Settings", icon: Settings, tour: "settings" };
+  const say = (text: string) => text;
+  const source = NAV[role];
+  const nav = {
+    main: source.main.map((item) => ({ ...item, label: say(item.label) })),
+    tabs: source.tabs.map((item) => ({ ...item, label: say(item.label) })),
+  };
+  const alerts: NavItem = { href: `/${role}/notifications`, label: say("Alerts"), icon: Bell, tour: "alerts" };
+  const settings: NavItem = { href: `/${role}/settings`, label: say("Settings"), icon: Settings, tour: "settings" };
   const onChat = pathname === `/${role}/chat` || pathname.startsWith(`/${role}/chat/`);
   const showChatDot = chatUnread > 0 && !onChat;
   const chatInTabs = nav.tabs.some((item) => item.href.endsWith("/chat"));
@@ -215,7 +220,7 @@ export function PortalShell({
               className="hidden items-center gap-2 rounded-full border border-danger-200 bg-white px-3.5 py-1.5 text-[0.85rem] font-bold text-danger-700 hover:bg-danger-50 sm:inline-flex"
             >
               <Phone className="size-3.5" aria-hidden />
-              Emergency? Call 911
+              {say("Emergency? Call 911")}
             </a>
             <Link
               href={alerts.href}
@@ -228,7 +233,7 @@ export function PortalShell({
             <button
               type="button"
               className="grid size-11 place-items-center rounded-xl text-ink-700 hover:bg-white lg:hidden"
-              aria-label="Open menu"
+              aria-label={say("Open menu")}
               aria-expanded={open}
               onClick={() => setOpen(true)}
             >
@@ -276,25 +281,25 @@ export function PortalShell({
                 </span>
               ) : null}
             </span>
-            More
+            {say("More")}
           </button>
         </div>
       </nav>
 
       {open ? (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
-          <button type="button" className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" aria-label="Close menu" onClick={() => setOpen(false)} />
+        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label={say("Menu")}>
+          <button type="button" className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" aria-label={say("Close menu")} onClick={() => setOpen(false)} />
           <div className="absolute inset-y-0 right-0 flex w-[min(21rem,88vw)] animate-fade-up flex-col bg-white shadow-float">
             <div className="flex h-[4.25rem] items-center justify-between border-b border-line px-4">
               <Logo href={`/${role}/dashboard`} />
-              <button type="button" className="grid size-11 place-items-center rounded-xl hover:bg-sand" aria-label="Close menu" onClick={() => setOpen(false)}>
+              <button type="button" className="grid size-11 place-items-center rounded-xl hover:bg-sand" aria-label={say("Close menu")} onClick={() => setOpen(false)}>
                 <X className="size-6" aria-hidden />
               </button>
             </div>
             {sidebar(() => setOpen(false))}
             <a href="tel:911" className="mx-3 mb-4 flex items-center justify-center gap-2 rounded-xl bg-danger-600 py-3 font-bold text-white">
               <Phone className="size-4" aria-hidden />
-              Emergency? Call 911
+              {say("Emergency? Call 911")}
             </a>
           </div>
         </div>

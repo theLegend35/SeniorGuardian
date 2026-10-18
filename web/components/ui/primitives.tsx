@@ -199,7 +199,7 @@ export function SourceBlock({ label = "Original", meta, children, className }: {
         </span>
         {meta ? <span className="text-[0.8rem] text-ink-500">{meta}</span> : null}
       </figcaption>
-      <blockquote className="px-4 py-3.5 font-medium whitespace-pre-wrap text-ink-950">{children}</blockquote>
+      <blockquote translate="no" className="px-4 py-3.5 font-medium whitespace-pre-wrap text-ink-950">{children}</blockquote>
     </figure>
   );
 }

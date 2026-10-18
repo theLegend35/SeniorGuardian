@@ -1,5 +1,5 @@
 import { router, type Href } from "expo-router";
-import { Bell, BellRing, CalendarDays, Check, LogOut, MessageSquare, Pill, Send, Smartphone, Type, UserRound } from "lucide-react-native";
+import { Bell, BellRing, CalendarDays, Check, Languages, LogOut, MessageSquare, Pill, Send, Smartphone, Type, UserRound } from "lucide-react-native";
 import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -37,6 +37,7 @@ import { mobilePath } from "@/lib/paths";
 import { listMessages, listNotices, markChatRead, markNoticeRead, sendMessage, updateProfile } from "@/lib/records";
 import { sendTestReminder, setPhoneReminders } from "@/lib/reminders";
 import { colors, fonts, radius, shadows } from "@/lib/theme";
+import { useSpanish } from "@/lib/translate";
 import type { Access, PersonCard, Role, TextScale } from "@/lib/types";
 
 const ROLE_LABEL: Record<Role, string> = { patient: "Patient", doctor: "Clinician", caregiver: "Caregiver" };
@@ -107,9 +108,34 @@ export function SettingsScreen() {
   const [name, setName] = useState(actor?.fullName ?? "");
   const [phone, setPhone] = useState(actor?.phone ?? "");
   const [scale, setScale] = useState<TextScale>(actor?.textScale ?? "default");
+  const [locale, setLocale] = useState<"en" | "es">(actor?.locale === "es" ? "es" : "en");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const say = useSpanish(locale === "es", [
+    "Settings",
+    "Your name, phone, language, and how large text looks in this app.",
+    "Could not save",
+    "Saved",
+    "Your name, phone, language, and text size are updated.",
+    "Profile",
+    "Name",
+    "Phone",
+    "Language",
+    "Pages, menus, and buttons use the language you choose. Prescription text stays as it was saved.",
+    "Text size",
+    "Applies across this app.",
+    "Default",
+    "Large",
+    "Largest",
+    "Save changes",
+    "This phone",
+    "Phone alerts",
+    "Phone reminders",
+    "What rings here, and a test reminder",
+    "Sign out",
+    "In an emergency, call 911. Senior Guardian is not an emergency service.",
+  ]);
   if (!actor) return null;
 
   const save = async () => {
@@ -117,7 +143,7 @@ export function SettingsScreen() {
     setSaved(false);
     setSaving(true);
     try {
-      await updateProfile(actor.profileId, { fullName: name, phone, textScale: scale });
+      await updateProfile(actor.profileId, { fullName: name, phone, textScale: scale, locale });
       await refresh();
       setSaved(true);
     } catch (err) {
@@ -129,7 +155,7 @@ export function SettingsScreen() {
 
   return (
     <Screen>
-      <PageHeader title="Settings" description="Your name, phone, and how large text looks in this app." />
+      <PageHeader title={say("Settings")} description={say("Your name, phone, language, and how large text looks in this app.")} />
 
       <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
         <Avatar name={actor.fullName} size={58} />
@@ -145,29 +171,41 @@ export function SettingsScreen() {
       </Card>
 
       {error ? (
-        <Callout tone="danger" title="Could not save">
+        <Callout tone="danger" title={say("Could not save")}>
           {error}
         </Callout>
       ) : null}
       {saved ? (
-        <Callout tone="success" title="Saved">
-          Your name, phone, and text size are updated.
+        <Callout tone="success" title={say("Saved")}>
+          {say("Your name, phone, language, and text size are updated.")}
         </Callout>
       ) : null}
 
       <Card>
-        <CardHeader icon={UserRound} title="Profile" />
-        <Field label="Name" value={name} onChangeText={setName} />
-        <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" optional />
+        <CardHeader icon={UserRound} title={say("Profile")} />
+        <Field label={say("Name")} value={name} onChangeText={setName} />
+        <Field label={say("Phone")} value={phone} onChangeText={setPhone} keyboardType="phone-pad" optional />
       </Card>
 
       <Card>
-        <CardHeader icon={Type} title="Text size" description="Applies across this app." />
+        <CardHeader icon={Languages} title={say("Language")} description={say("Pages, menus, and buttons use the language you choose. Prescription text stays as it was saved.")} />
         <Segmented
           options={[
-            { value: "default", label: "Default" },
-            { value: "large", label: "Large" },
-            { value: "largest", label: "Largest" },
+            { value: "en", label: "English" },
+            { value: "es", label: "Español" },
+          ]}
+          value={locale}
+          onChange={setLocale}
+        />
+      </Card>
+
+      <Card>
+        <CardHeader icon={Type} title={say("Text size")} description={say("Applies across this app.")} />
+        <Segmented
+          options={[
+            { value: "default", label: say("Default") },
+            { value: "large", label: say("Large") },
+            { value: "largest", label: say("Largest") },
           ]}
           value={scale}
           onChange={setScale}
@@ -176,15 +214,15 @@ export function SettingsScreen() {
 
       <AiSettingsCard />
 
-      <Button label="Save changes" icon={Check} loading={saving} onPress={() => void save()} />
+      <Button label={say("Save changes")} icon={Check} loading={saving} onPress={() => void save()} />
 
-      <ListGroup title="This phone">
-        <ListRow icon={BellRing} title={actor.role === "doctor" ? "Phone alerts" : "Phone reminders"} body="What rings here, and a test reminder" href={remindersHref[actor.role]} />
+      <ListGroup title={say("This phone")}>
+        <ListRow icon={BellRing} title={say(actor.role === "doctor" ? "Phone alerts" : "Phone reminders")} body={say("What rings here, and a test reminder")} href={remindersHref[actor.role]} />
       </ListGroup>
 
-      <Button label="Sign out" icon={LogOut} variant="danger" onPress={() => void signOut()} />
+      <Button label={say("Sign out")} icon={LogOut} variant="danger" onPress={() => void signOut()} />
       <AppText size={13.5} color={colors.ink500} align="center">
-        In an emergency, call 911. Senior Guardian is not an emergency service.
+        {say("In an emergency, call 911. Senior Guardian is not an emergency service.")}
       </AppText>
     </Screen>
   );

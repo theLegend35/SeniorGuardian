@@ -59,7 +59,7 @@ export function DoseRow({ dose, canMark, detailHref }: { dose: TodayDose; canMar
         {dose.taken ? <Check className="size-5" strokeWidth={3} aria-hidden /> : <Pill className="size-5" aria-hidden />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-x-2 font-bold text-ink-950">
+        <p translate="no" className="flex flex-wrap items-center gap-x-2 font-bold text-ink-950">
           {detailHref ? (
             <Link href={detailHref} className="hover:text-brand-700 hover:underline">
               {dose.medication.name}
@@ -69,7 +69,7 @@ export function DoseRow({ dose, canMark, detailHref }: { dose: TodayDose; canMar
           )}
           <span className="text-[0.9rem] font-semibold text-ink-500">{formatTime(dose.time)}</span>
         </p>
-        <p className="line-clamp-1 text-[0.9rem] text-ink-500">{dose.medication.instructions}</p>
+        <p translate="no" className="line-clamp-1 text-[0.9rem] text-ink-500">{dose.medication.instructions}</p>
         {dose.taken ? null : (
           <p className={cx("text-[0.82rem] font-semibold", due ? "text-apricot-700" : "text-ink-400")}>{due ? "Due now" : "Later today"}</p>
         )}

@@ -1,4 +1,4 @@
-import { Instrument_Serif } from "next/font/google";
+import { Bricolage_Grotesque } from "next/font/google";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Check, Eye, HeartPulse, Phone, Pill, ShieldCheck, Star, Watch, type LucideIcon } from "lucide-react";
 
@@ -7,17 +7,17 @@ import { DayShowcase } from "@/components/marketing/DayShowcase";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { Reveal } from "@/components/marketing/Reveal";
 import { ShareDemo } from "@/components/marketing/ShareDemo";
-import { cx } from "@/components/ui/primitives";
 import { homeFor } from "@/lib/auth/access";
 import { currentActor } from "@/lib/auth/session";
 
-const instrument = Instrument_Serif({
-  weight: "400",
-  style: ["normal", "italic"],
+const headline = Bricolage_Grotesque({
   subsets: ["latin"],
-  variable: "--font-instrument",
+  weight: ["600", "700"],
+  variable: "--font-headline",
   display: "swap",
 });
+
+const HEAD = "font-[family-name:var(--font-headline)] [font-variant-numeric:lining-nums] font-semibold tracking-[-0.035em]";
 
 const MARQUEE = ["Medicines", "Appointments", "Check a Health Concern", "Ring and watch readings", "Family sharing", "Care nearby", "Plain-language explanations"];
 
@@ -44,34 +44,22 @@ const FAQ = [
   { q: "Which rings and watches work?", a: "Oura and Withings sign in through their own accounts. Fitbit and Pixel Watch use Google Health. If a device stops sending numbers, the record says it is offline." },
 ];
 
-const SERIF_H2 = "font-serif text-[clamp(2.5rem,5vw,4.2rem)] leading-[0.98] font-normal text-ink-950";
+const SERIF_H2 = `${HEAD} text-[clamp(2.5rem,5vw,4.2rem)] leading-[1.02] text-ink-950`;
 
 export default async function HomePage() {
   const actor = await currentActor();
   const portal = actor ? homeFor(actor.role) : null;
 
   return (
-    <div className={cx("overflow-x-clip bg-canvas text-ink-800", instrument.variable)}>
+    <div className={`overflow-x-clip bg-canvas text-ink-800 ${headline.variable}`}>
       <MarketingHeader portal={portal} />
       <main>
         <section className="relative pt-24 sm:pt-28">
           <div className="dot-grid pointer-events-none absolute inset-0 opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" aria-hidden />
           <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 pb-16 sm:px-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:pb-24">
             <div>
-              <p className="hero-rise inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 font-display text-[0.85rem] font-bold text-ink-700">
-                <span className="size-2 rounded-full bg-apricot-500" />
-                For older adults, the family who helps, and their clinicians
-              </p>
-              <h1 className="mt-6 font-serif text-[clamp(3.1rem,7.2vw,6.4rem)] leading-[0.92] font-normal text-ink-950">
-                <span className="hero-rise block" style={{ animationDelay: "80ms" }}>
-                  Health at home,
-                </span>
-                <span className="hero-rise block text-brand-700 italic" style={{ animationDelay: "160ms" }}>
-                  kept in one
-                </span>
-                <span className="hero-rise block text-brand-700 italic" style={{ animationDelay: "240ms" }}>
-                  calm place.
-                </span>
+              <h1 className="hero-rise max-w-xl font-[family-name:var(--font-headline)] text-[clamp(2.4rem,4.2vw,3.35rem)] leading-[1.12] font-bold tracking-[-0.035em] text-ink-950" style={{ animationDelay: "80ms" }}>
+                A home record your family can <span className="text-brand-700">follow.</span>
               </h1>
               <p className="hero-rise mt-7 max-w-xl text-[1.15rem] leading-relaxed text-ink-600 sm:text-[1.25rem]" style={{ animationDelay: "320ms" }}>
                 Medicines, visits, health concerns, and ring readings live together. Senior Guardian explains them in plain words and shares only what you choose.
@@ -88,8 +76,8 @@ export default async function HomePage() {
                   See a day
                 </a>
               </div>
-              <ul className="hero-rise mt-9 grid gap-2.5 sm:grid-cols-3 sm:gap-4" style={{ animationDelay: "480ms" }}>
-                {["The original words stay visible", "Nothing shared until you say so", "Emergency words point to 911"].map((item) => (
+              <ul className="hero-rise mt-9 grid gap-2.5" style={{ animationDelay: "480ms" }}>
+                {["The prescription label stays next to every explanation.", "A family member or clinician sees a section only if you turn it on.", "If you describe an emergency, it tells you to call 911."].map((item) => (
                   <li key={item} className="flex items-start gap-2 text-[0.95rem] font-semibold text-ink-700">
                     <Check className="mt-0.5 size-4 flex-none text-brand-600" strokeWidth={3} aria-hidden />
                     {item}
@@ -153,7 +141,7 @@ export default async function HomePage() {
               <div key={copy} className="flex shrink-0 items-center">
                 {MARQUEE.map((word) => (
                   <span key={word} className="flex items-center">
-                    <span className="px-7 font-serif text-[clamp(1.6rem,2.6vw,2.3rem)] whitespace-nowrap italic">{word}</span>
+                    <span className={`px-7 ${HEAD} text-[clamp(1.45rem,2.4vw,2rem)] whitespace-nowrap`}>{word}</span>
                     <Star className="size-4 flex-none fill-apricot-400 text-apricot-400" />
                   </span>
                 ))}
@@ -166,7 +154,7 @@ export default async function HomePage() {
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <Reveal className="mb-12 grid gap-4 lg:grid-cols-2 lg:items-end">
               <h2 className={SERIF_H2}>
-                From the first pill <span className="text-apricot-500 italic">to the last reading.</span>
+                From the first pill <span className="text-apricot-500">to the last reading.</span>
               </h2>
               <p className="max-w-lg text-[1.12rem] leading-relaxed text-ink-600 lg:justify-self-end">
                 Follow Eleanor through one day. Pick a moment, or let it play.
@@ -181,8 +169,8 @@ export default async function HomePage() {
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-5 sm:px-8 lg:grid-cols-2">
             <Reveal>
               <p className="font-display text-[0.85rem] font-extrabold tracking-[0.16em] text-apricot-400 uppercase">Rings and watches</p>
-              <h2 className="mt-4 font-serif text-[clamp(2.5rem,5vw,4.2rem)] leading-[0.98] font-normal">
-                Connect the device <span className="text-apricot-400 italic">you already wear.</span>
+              <h2 className={`mt-4 ${HEAD} text-[clamp(2.5rem,5vw,4.2rem)] leading-[1.02]`}>
+                Connect the device <span className="text-apricot-400">you already wear.</span>
               </h2>
               <p className="mt-5 max-w-lg text-[1.1rem] leading-relaxed text-white/75">
                 Readings arrive on their own. If one falls outside the range you saved, the patient, the family member, and the clinician each get an alert.
@@ -213,7 +201,7 @@ export default async function HomePage() {
                 <div className="absolute inset-[20%] rounded-full bg-gradient-to-br from-brand-700 to-brand-900 shadow-[inset_0_2px_30px_rgb(0_0_0/0.35)]" />
                 <div className="relative text-center">
                   <p className="font-display text-[0.78rem] font-extrabold tracking-[0.16em] text-white/60 uppercase">Heart rate</p>
-                  <p className="mt-1 font-display text-[clamp(3.4rem,8vw,4.8rem)] leading-none font-extrabold">112</p>
+                  <p className={`mt-1 ${HEAD} text-[clamp(3.4rem,8vw,4.8rem)] leading-none`}>112</p>
                   <p className="font-display text-[1rem] font-bold text-white/70">bpm</p>
                   <p className="mt-3 inline-flex rounded-full bg-apricot-500 px-3 py-1 font-display text-[0.82rem] font-extrabold text-ink-950">Outside 50–100</p>
                 </div>
@@ -232,7 +220,7 @@ export default async function HomePage() {
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <Reveal className="mb-12 max-w-3xl">
               <h2 className={SERIF_H2}>
-                Explanations help. <span className="text-apricot-500 italic">The original always stays.</span>
+                Explanations help. <span className="text-apricot-500">The original always stays.</span>
               </h2>
             </Reveal>
             <div className="grid gap-4 lg:grid-cols-6 lg:grid-rows-[auto_auto]">
@@ -241,7 +229,7 @@ export default async function HomePage() {
                   <img src="/marketing/hero-listen.jpg" alt="An older man talks with a woman at a desk beside a computer." className="absolute inset-0 size-full object-cover transition-transform duration-700 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-ink-950/20 to-transparent" />
                   <figcaption className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-8">
-                    <p className="max-w-md font-serif text-[clamp(1.9rem,3.4vw,2.8rem)] leading-[1.02]">The questions you wrote wait on the appointment.</p>
+                    <p className={`max-w-md ${HEAD} text-[clamp(1.9rem,3.4vw,2.6rem)] leading-[1.08]`}>The questions you wrote wait on the appointment.</p>
                     <p className="mt-2 max-w-md text-white/80">A clinician sees them only after you share that part of the record.</p>
                   </figcaption>
                 </figure>
@@ -259,7 +247,7 @@ export default async function HomePage() {
                 <div className="flex h-full flex-col justify-between gap-6 rounded-[2rem] bg-apricot-500 p-6 text-ink-950">
                   <Phone className="size-8" aria-hidden />
                   <div>
-                    <p className="font-serif text-[1.9rem] leading-[1.02]">Emergency words stop the chat.</p>
+                    <p className={`${HEAD} text-[1.85rem] leading-[1.08]`}>Emergency words stop the chat.</p>
                     <p className="mt-2 font-semibold text-ink-950/75">It tells you to call 911 right away.</p>
                   </div>
                 </div>
@@ -270,7 +258,7 @@ export default async function HomePage() {
                   <div className="absolute inset-0 bg-gradient-to-r from-ink-950/90 via-ink-950/60 to-ink-950/10" />
                   <figcaption className="relative flex h-full max-w-xs flex-col justify-end p-6 text-white">
                     <Pill className="mb-3 size-6 text-apricot-400" aria-hidden />
-                    <p className="font-serif text-[1.9rem] leading-[1.02]">A reminder repeats the label. It never makes up a dose.</p>
+                    <p className={`${HEAD} text-[1.85rem] leading-[1.08]`}>A reminder repeats the label. It never makes up a dose.</p>
                   </figcaption>
                 </figure>
               </Reveal>
@@ -278,7 +266,7 @@ export default async function HomePage() {
                 <div className="flex h-full flex-col justify-between gap-6 rounded-[2rem] bg-brand-800 p-6 text-white">
                   <ShieldCheck className="size-8 text-brand-200" aria-hidden />
                   <div>
-                    <p className="font-serif text-[1.9rem] leading-[1.02]">Nothing saves until you confirm it.</p>
+                    <p className={`${HEAD} text-[1.85rem] leading-[1.08]`}>Nothing saves until you confirm it.</p>
                     <p className="mt-2 text-white/75">Check a Health Concern is not a diagnosis. Your words and photo stay exactly as you saved them.</p>
                   </div>
                 </div>
@@ -291,7 +279,7 @@ export default async function HomePage() {
           <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 sm:px-8 lg:grid-cols-2 lg:gap-16">
             <Reveal>
               <h2 className={SERIF_H2}>
-                You decide <span className="text-apricot-500 italic">who sees what.</span>
+                You decide <span className="text-apricot-500">who sees what.</span>
               </h2>
               <p className="mt-5 max-w-lg text-[1.12rem] leading-relaxed text-ink-600">
                 Family and clinicians see a section only after you turn it on. There is no directory. Nobody finds a record by searching.
@@ -316,7 +304,7 @@ export default async function HomePage() {
           <div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
             <Reveal>
               <h2 className={SERIF_H2}>
-                Good <span className="text-apricot-500 italic">questions.</span>
+                Good <span className="text-apricot-500">questions.</span>
               </h2>
               <p className="mt-5 max-w-sm text-[1.08rem] leading-relaxed text-ink-600">Something else on your mind? Open Quick assist at the bottom right and ask about the product.</p>
             </Reveal>
@@ -344,8 +332,8 @@ export default async function HomePage() {
               <div className="drift pointer-events-none absolute -top-24 -left-24 size-[26rem] rounded-full bg-apricot-500/30 blur-3xl" aria-hidden />
               <div className="drift pointer-events-none absolute -right-24 -bottom-32 size-[30rem] rounded-full bg-brand-500/35 blur-3xl" style={{ animationDelay: "-7s" }} aria-hidden />
               <div className="relative">
-                <h2 className="mx-auto max-w-3xl font-serif text-[clamp(2.6rem,6vw,4.8rem)] leading-[0.98] font-normal">
-                  Start with one medicine. <span className="text-apricot-400 italic">Add the rest when you are ready.</span>
+                <h2 className={`mx-auto max-w-3xl ${HEAD} text-[clamp(2.4rem,5vw,4rem)] leading-[1.05]`}>
+                  Start with one medicine. <span className="text-apricot-400">Add the rest when you are ready.</span>
                 </h2>
                 <div className="mt-9 flex flex-wrap justify-center gap-3">
                   <Link href="/signup" className="group inline-flex min-h-14 items-center gap-2 rounded-full bg-apricot-500 px-7 text-[1.08rem] font-bold text-ink-950 transition-transform hover:-translate-y-0.5 hover:bg-apricot-400">

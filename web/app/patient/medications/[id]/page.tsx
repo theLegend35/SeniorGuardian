@@ -63,7 +63,7 @@ export default async function MedicationPage({ params, searchParams }: { params:
     <div className="grid gap-6">
       <PageHeader
         back={{ href: "/patient/medications", label: "Medicines" }}
-        title={medication.name}
+        title={<span translate="no">{medication.name}</span>}
         description={[medication.frequency, medication.prescribingProvider && `Prescribed by ${medication.prescribingProvider}`].filter(Boolean).join(" · ")}
         actions={
           active ? (

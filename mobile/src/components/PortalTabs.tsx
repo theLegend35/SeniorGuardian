@@ -4,7 +4,9 @@ import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HelpBar } from "@/components/HelpBar";
+import { useAuth } from "@/lib/auth";
 import { colors, fonts } from "@/lib/theme";
+import { useSpanish } from "@/lib/translate";
 
 export type PortalTab = { name: string; title: string; icon: LucideIcon };
 
@@ -24,6 +26,8 @@ export function PortalTabs({
   askHref?: string;
 }) {
   const insets = useSafeAreaInsets();
+  const { actor } = useAuth();
+  const say = useSpanish(actor?.locale === "es", tabs.map((tab) => tab.title));
   const bottom = Math.max(insets.bottom, Platform.OS === "web" ? 8 : 10);
   return (
     <View style={{ flex: 1 }}>
@@ -38,7 +42,7 @@ export function PortalTabs({
       }}
     >
       {tabs.map((tab) => (
-        <Tabs.Screen key={tab.name} name={tab.name} options={{ title: tab.title, tabBarIcon: ({ focused }) => <TabIcon icon={tab.icon} focused={focused} /> }} />
+        <Tabs.Screen key={tab.name} name={tab.name} options={{ title: say(tab.title), tabBarIcon: ({ focused }) => <TabIcon icon={tab.icon} focused={focused} /> }} />
       ))}
     </Tabs>
     <HelpBar

@@ -65,7 +65,7 @@ export default async function AssistantPage() {
             {meds.map((med) => (
               <li key={med.id}>
                 <Link href={`/patient/medications/${med.id}`} className="block rounded-xl px-3 py-2 hover:bg-canvas">
-                  <span className="block font-semibold text-ink-900">{med.name}</span>
+                  <span translate="no" className="block font-semibold text-ink-900">{med.name}</span>
                   <span className="block text-[0.82rem] text-ink-500">{med.times.map(formatTime).join(" · ")}</span>
                 </Link>
               </li>

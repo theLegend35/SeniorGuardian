@@ -42,7 +42,7 @@ export function MedicationTable({
           <li key={med.id} className="rounded-2xl border border-line p-4">
             <div className="flex flex-wrap items-start gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-[1.05rem] font-bold text-ink-950">{med.name}</p>
+                <p translate="no" className="text-[1.05rem] font-bold text-ink-950">{med.name}</p>
                 <p className="text-[0.9rem] text-ink-500">
                   {med.frequency}
                   {med.prescribingProvider ? ` · ${med.prescribingProvider}` : ""}

@@ -70,7 +70,9 @@ export default async function PatientDashboard() {
     <div className="grid gap-7">
       <header className="flex flex-col gap-1">
         <p className="text-[0.95rem] font-semibold text-brand-700">{formatDate(new Date().toISOString())}</p>
-        <h1 className="text-[2rem] leading-tight font-extrabold text-ink-950 md:text-[2.4rem]">{greeting(actor.fullName)}</h1>
+        <h1 className="text-[2rem] leading-tight font-extrabold text-ink-950 md:text-[2.4rem]">
+          {greeting(actor.fullName).replace(/,.*$/, ",")} <span translate="no">{actor.fullName.split(" ")[0]}</span>
+        </h1>
         <p className="text-[1.05rem] text-ink-600">
           {remaining === 0 && sortedDoses.length
             ? "All of today's medicines are marked taken. Nice work."

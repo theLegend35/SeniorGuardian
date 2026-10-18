@@ -41,7 +41,7 @@ export default async function MedicationsPage() {
                       <Pill className="size-6" aria-hidden />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[1.15rem] font-bold text-ink-950 group-hover:text-brand-800">{med.name}</p>
+                      <p translate="no" className="text-[1.15rem] font-bold text-ink-950 group-hover:text-brand-800">{med.name}</p>
                       <p className="text-[0.9rem] text-ink-500">
                         {med.frequency}
                         {med.prescribingProvider ? ` · ${med.prescribingProvider}` : ""}
@@ -49,7 +49,7 @@ export default async function MedicationsPage() {
                     </div>
                     <ChevronRight className="mt-1 size-5 flex-none text-ink-400" aria-hidden />
                   </div>
-                  <p className="mt-4 flex-1 rounded-xl bg-canvas px-3.5 py-2.5 text-[0.95rem] text-ink-800">“{med.instructions}”</p>
+                  <p translate="no" className="mt-4 flex-1 rounded-xl bg-canvas px-3.5 py-2.5 text-[0.95rem] text-ink-800">“{med.instructions}”</p>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {med.times.map((time) => (
                       <span key={time} className="inline-flex items-center gap-1 rounded-full bg-sand px-2.5 py-0.5 text-[0.85rem] font-semibold text-ink-700">
@@ -89,7 +89,7 @@ export default async function MedicationsPage() {
                 <Link href={`/patient/medications/${med.id}`} className="flex items-center gap-4 px-5 py-3.5 hover:bg-canvas">
                   <Archive className="size-5 flex-none text-ink-400" aria-hidden />
                   <span className="min-w-0 flex-1">
-                    <span className="block font-semibold text-ink-800">{med.name}</span>
+                    <span translate="no" className="block font-semibold text-ink-800">{med.name}</span>
                     <span className="block text-[0.88rem] text-ink-500">
                       Stopped {shortDate(med.endDate ?? med.updatedAt)}
                     </span>

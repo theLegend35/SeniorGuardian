@@ -3,7 +3,9 @@ import { Manrope } from "next/font/google";
 
 import { EarlyScripts } from "@/components/accessibility/EarlyScripts";
 import { HelpDock } from "@/components/accessibility/HelpDock";
+import { PageTranslator } from "@/components/i18n/PageTranslator";
 import { currentActor } from "@/lib/auth/session";
+import { localeOf } from "@/lib/i18n";
 import { tutorialFor, tutorialSteps } from "@/lib/auth/tutorial";
 
 import "./globals.css";
@@ -28,9 +30,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const actor = await currentActor();
   const pendingTour = actor ? await tutorialFor(actor) : null;
   return (
-    <html lang="en" data-scale={actor?.textScale ?? "default"} data-guest={actor ? undefined : ""} className={type.variable} suppressHydrationWarning>
+    <html lang={localeOf(actor?.locale)} data-scale={actor?.textScale ?? "default"} data-guest={actor ? undefined : ""} className={type.variable} suppressHydrationWarning>
       <body className="min-h-dvh font-sans antialiased" suppressHydrationWarning>
         <EarlyScripts />
+        <PageTranslator locale={localeOf(actor?.locale)} />
         {children}
         <HelpDock signedIn={Boolean(actor)} steps={actor ? tutorialSteps(actor.role) : null} autoOpen={pendingTour !== null} />
       </body>

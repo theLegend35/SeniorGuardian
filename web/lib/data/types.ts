@@ -24,6 +24,7 @@ import type {
   DeviceReading,
   ProposedAction,
   ReadingRange,
+  Locale,
   TextScale,
   TimelineEvent,
 } from "@/types/domain";
@@ -32,6 +33,7 @@ export type ProfilePatch = {
   fullName?: string;
   phone?: string;
   textScale?: TextScale;
+  locale?: Locale;
 };
 
 export type HealthPatch = {

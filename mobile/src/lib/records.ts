@@ -101,7 +101,7 @@ function accessFrom(row: Row, notes: boolean): Access {
 
 export async function loadActor(profileId: string): Promise<Actor | null> {
   ensureReady();
-  const { data, error } = await supabase.from("profiles").select("id, email, role, full_name, phone, text_scale").eq("id", profileId).maybeSingle();
+  const { data, error } = await supabase.from("profiles").select("id, email, role, full_name, phone, text_scale, locale").eq("id", profileId).maybeSingle();
   raise(error, "The account could not be opened.");
   if (!data) return null;
   const row = data as Row;
@@ -122,6 +122,7 @@ export async function loadActor(profileId: string): Promise<Actor | null> {
     fullName: text(row, "full_name"),
     phone: text(row, "phone"),
     textScale: scale === "large" || scale === "largest" ? scale : "default",
+    locale: text(row, "locale") === "es" ? "es" : "en",
     patientId: patient.data ? text(patient.data as Row, "id") : null,
     doctorId: doctor.data ? text(doctor.data as Row, "id") : null,
     caregiverId: caregiver.data ? text(caregiver.data as Row, "id") : null,
@@ -674,7 +675,7 @@ export async function markChatRead(patientId: string): Promise<void> {
   if (result.error) return;
 }
 
-export async function updateProfile(profileId: string, patch: { fullName?: string; phone?: string; textScale?: TextScale }): Promise<void> {
+export async function updateProfile(profileId: string, patch: { fullName?: string; phone?: string; textScale?: TextScale; locale?: "en" | "es" }): Promise<void> {
   ensureReady();
   const payload: Row = {};
   if (patch.fullName !== undefined) {
@@ -684,6 +685,7 @@ export async function updateProfile(profileId: string, patch: { fullName?: strin
   }
   if (patch.phone !== undefined) payload.phone = patch.phone.trim().slice(0, 40);
   if (patch.textScale !== undefined) payload.text_scale = patch.textScale;
+  if (patch.locale === "en" || patch.locale === "es") payload.locale = patch.locale;
   const result = await supabase.from("profiles").update(payload).eq("id", profileId);
   raise(result.error, "Settings could not be saved.");
 }

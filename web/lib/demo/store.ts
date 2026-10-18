@@ -140,6 +140,9 @@ export class FileHealthStore implements HealthStore {
         saved.clinicianMessages ??= [];
         saved.caregiverThreads ??= [];
         saved.caregiverMessages ??= [];
+        for (const profile of saved.profiles) {
+          if (profile.locale !== "en" && profile.locale !== "es") profile.locale = "en";
+        }
         for (const grant of saved.caregiverPermissions) {
           if (typeof grant.viewReadings !== "boolean") grant.viewReadings = grant.id === IDS.caregiverGrant;
         }
@@ -231,6 +234,7 @@ export class FileHealthStore implements HealthStore {
       fullName: profile.fullName,
       phone: profile.phone,
       textScale: profile.textScale,
+      locale: profile.locale === "es" ? "es" : "en",
       patientId: db.patients.find((item) => item.profileId === profile.id)?.id ?? null,
       doctorId: db.doctors.find((item) => item.profileId === profile.id)?.id ?? null,
       caregiverId: db.caregivers.find((item) => item.profileId === profile.id)?.id ?? null,
@@ -321,6 +325,7 @@ export class FileHealthStore implements HealthStore {
         fullName: clean(input.fullName, "Name", 120),
         phone: input.phone?.trim() ?? "",
         textScale: "default",
+        locale: "en",
         createdAt: now,
         updatedAt: now,
       };
@@ -379,6 +384,7 @@ export class FileHealthStore implements HealthStore {
       if (patch.fullName !== undefined) profile.fullName = clean(patch.fullName, "Name", 120);
       if (patch.phone !== undefined) profile.phone = patch.phone.trim();
       if (patch.textScale) profile.textScale = patch.textScale;
+      if (patch.locale === "en" || patch.locale === "es") profile.locale = patch.locale;
       profile.updatedAt = new Date().toISOString();
       this.persist();
       return pub(profile);

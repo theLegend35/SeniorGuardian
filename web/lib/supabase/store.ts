@@ -105,6 +105,7 @@ function profileFrom(row: Row): Profile {
     fullName: text(row, "full_name"),
     phone: text(row, "phone"),
     textScale: (text(row, "text_scale") || "default") as TextScale,
+    locale: text(row, "locale") === "es" ? "es" : "en",
     createdAt: text(row, "created_at"),
     updatedAt: text(row, "updated_at"),
   };
@@ -406,6 +407,7 @@ export class SupabaseHealthStore implements HealthStore {
       fullName: profile.fullName,
       phone: profile.phone,
       textScale: profile.textScale,
+      locale: profile.locale,
       patientId: patient ? text(patient as Row, "id") : null,
       doctorId: doctor ? text(doctor as Row, "id") : null,
       caregiverId: caregiver ? text(caregiver as Row, "id") : null,
@@ -417,6 +419,7 @@ export class SupabaseHealthStore implements HealthStore {
     if (patch.fullName !== undefined) payload.full_name = clean(patch.fullName, "Full name", 160);
     if (patch.phone !== undefined) payload.phone = patch.phone.trim().slice(0, 40);
     if (patch.textScale !== undefined) payload.text_scale = patch.textScale;
+    if (patch.locale === "en" || patch.locale === "es") payload.locale = patch.locale;
     const db = await this.db();
     const { data, error } = await db.from("profiles").update(payload).eq("id", actor.profileId).select("*").single();
     if (error || !data) throw new AccessError();

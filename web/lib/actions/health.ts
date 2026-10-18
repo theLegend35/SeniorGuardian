@@ -651,11 +651,13 @@ export async function updateSettingsAction(_state: ActionState, formData: FormDa
   try {
     const actor = await requireActor();
     const scale = text(formData, "textScale") || "default";
+    const locale = text(formData, "locale") === "es" ? "es" : "en";
     if (scale !== "default" && scale !== "large" && scale !== "largest") return { error: "Choose a text size." };
     await (await getStore()).updateProfile(actor, {
       fullName: text(formData, "fullName") || actor.fullName,
       phone: text(formData, "phone"),
       textScale: scale,
+      locale,
     });
     revalidatePath("/", "layout");
     return { notice: "Settings saved." };

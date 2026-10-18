@@ -2,6 +2,8 @@ export type Role = "patient" | "doctor" | "caregiver";
 
 export type TextScale = "default" | "large" | "largest";
 
+export type Locale = "en" | "es";
+
 export type Profile = {
   id: string;
   email: string;
@@ -9,6 +11,7 @@ export type Profile = {
   fullName: string;
   phone: string;
   textScale: TextScale;
+  locale: Locale;
   createdAt: string;
   updatedAt: string;
 };
@@ -366,6 +369,7 @@ export type Actor = {
   fullName: string;
   phone: string;
   textScale: TextScale;
+  locale: Locale;
   patientId: string | null;
   doctorId: string | null;
   caregiverId: string | null;

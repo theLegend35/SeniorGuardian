@@ -81,6 +81,7 @@ function profile(id: string, role: Profile["role"], fullName: string, email: str
     fullName,
     phone,
     textScale: "default",
+    locale: "en",
     createdAt: now,
     updatedAt: now,
   };
