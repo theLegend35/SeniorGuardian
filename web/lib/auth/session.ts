@@ -1,11 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { homeFor } from "@/lib/auth/access";
+import { ConfirmEmailError, homeFor } from "@/lib/auth/access";
 import { openSession, sealSession, SESSION_COOKIE } from "@/lib/auth/cookie";
+import { confirmUrl } from "@/lib/auth/origin";
 import { getStore } from "@/lib/data/index";
 import type { SignupInput } from "@/lib/data/types";
-import { supabaseConfigured } from "@/lib/supabase/env";
+import { clinicianEmailConfirmation, supabaseConfigured } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Actor, Role } from "@/types/domain";
 
@@ -43,15 +44,46 @@ export async function requireRole(role: Role): Promise<Actor> {
   return actor;
 }
 
-export async function signInWithPassword(email: string, password: string): Promise<Actor> {
+function emailNotConfirmed(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "email_not_confirmed" || /email not confirmed/i.test(error.message ?? "");
+}
+
+/** Sends the confirmation email again. Supabase limits how often this can run, so a failure is not an error. */
+export async function resendConfirmation(email: string): Promise<boolean> {
+  if (!supabaseConfigured()) return false;
+  try {
+    const supabase = await createSupabaseServerClient();
+    const redirect = await confirmUrl("signup");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim().toLowerCase(),
+      options: redirect ? { emailRedirectTo: redirect } : undefined,
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function signInWithPassword(email: string, password: string, options: { resendConfirmation?: boolean } = {}): Promise<Actor> {
   if (supabaseConfigured()) {
     const jar = await cookies();
     jar.delete(SESSION_COOKIE);
     const supabase = await createSupabaseServerClient();
+    const address = email.trim().toLowerCase();
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+      email: address,
       password,
     });
+    if (emailNotConfirmed(error)) {
+      const sent = options.resendConfirmation === false ? false : await resendConfirmation(address);
+      throw new ConfirmEmailError(
+        sent
+          ? `Confirm your email address first. We sent a new link to ${address}. Open it, then sign in.`
+          : `Confirm your email address first. Open the link we sent to ${address}, then sign in.`,
+      );
+    }
     if (error || !data.user) throw new Error("That email or password is not correct.");
     const { SupabaseHealthStore } = await import("@/lib/supabase/store");
     const actor = await new SupabaseHealthStore().getActor(data.user.id);
@@ -70,7 +102,20 @@ export async function signInWithPassword(email: string, password: string): Promi
 
 export async function signUpAccount(input: SignupInput): Promise<Actor> {
   const profile = await (await getStore()).createAccount(input);
-  return signInWithPassword(profile.email, input.password);
+  // A clinician or caregiver confirms their email before a patient can add them.
+  const sent = supabaseConfigured() && input.role !== "patient" && clinicianEmailConfirmation() ? await resendConfirmation(profile.email) : false;
+  try {
+    return await signInWithPassword(profile.email, input.password, { resendConfirmation: false });
+  } catch (error) {
+    if (error instanceof ConfirmEmailError) {
+      throw new ConfirmEmailError(
+        sent
+          ? `Your account is ready. We sent a confirmation link to ${profile.email}. Open it, then sign in.`
+          : `Your account is ready, but the confirmation email could not be sent just now. Sign in a little later and we will send it again.`,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function signOut(scope: "local" | "global" = "global"): Promise<void> {

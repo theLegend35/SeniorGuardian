@@ -1,3 +1,4 @@
+import { signingSecret } from "@/lib/auth/secret";
 import type { Role } from "@/types/domain";
 
 export const SESSION_COOKIE = "sha_session";
@@ -9,7 +10,7 @@ export type SessionPayload = {
 };
 
 function secret(): string {
-  return process.env.DEMO_SESSION_SECRET || "dev-only-senior-help-ai-change-me";
+  return signingSecret();
 }
 
 function encode(bytes: Uint8Array): string {

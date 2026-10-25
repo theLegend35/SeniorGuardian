@@ -11,13 +11,23 @@ export const metadata = { title: "Sign in" };
 
 const ICONS = { patient: UserRound, doctor: Stethoscope, caregiver: HeartHandshake };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string }> }) {
-  const { next, reset } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string; confirmed?: string }> }) {
+  const { next, reset, confirmed } = await searchParams;
   return (
     <AuthShell title="Welcome back" description="Sign in with your email, or use one of the three sample accounts below.">
       {reset ? (
         <Callout tone="success" title="Sample records were restored" className="mb-6">
           The sample records are back to their starting state.
+        </Callout>
+      ) : null}
+      {confirmed === "1" ? (
+        <Callout tone="success" title="Your email address is confirmed" className="mb-6">
+          Sign in to continue. Patients can now add you to their care team.
+        </Callout>
+      ) : null}
+      {confirmed === "0" ? (
+        <Callout tone="warning" title="That confirmation link has expired" className="mb-6">
+          Sign in with your email and password, and we will send a new link.
         </Callout>
       ) : null}
 

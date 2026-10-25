@@ -4,6 +4,7 @@ import type {
   ClinicalArea,
   FileBucket,
   PatientDoctor,
+  TimelineKind,
 } from "@/types/domain";
 
 export class AccessError extends Error {
@@ -17,6 +18,14 @@ export class ValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ValidationError";
+  }
+}
+
+/** The account exists but its email address is not confirmed yet. Shown as a notice, not an error. */
+export class ConfirmEmailError extends ValidationError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfirmEmailError";
   }
 }
 
@@ -108,6 +117,39 @@ export function canViewArea(
       return false;
   }
 }
+
+type PatientDetails = { dateOfBirth: string; address: string; emergencyContact: string; bloodType: string; allergies: string; conditions: string };
+
+/**
+ * The part of the patient's own details a viewer may see. Caregivers get the birth date once
+ * any section is shared and allergies with Medicines. Conditions, address, blood type, and the
+ * emergency contact are not a section a patient can share, so caregivers never see them.
+ */
+export function visiblePatient<T extends PatientDetails>(actor: Actor, patientId: string, patient: T, ctx: AccessContext): T {
+  if (actor.role !== "caregiver") return patient;
+  return {
+    ...patient,
+    dateOfBirth: canViewArea(actor, patientId, "overview", ctx) ? patient.dateOfBirth : "",
+    address: "",
+    emergencyContact: "",
+    bloodType: "",
+    conditions: "",
+    allergies: canViewArea(actor, patientId, "medications", ctx) ? patient.allergies : "",
+  };
+}
+
+/** The section a timeline entry belongs to. */
+export const TIMELINE_AREA: Record<TimelineKind, ClinicalArea> = {
+  concern: "concerns",
+  image: "concerns",
+  medication_change: "medications",
+  medication_activity: "medications",
+  appointment: "appointments",
+  doctor_note: "notes",
+  patient_note: "notes",
+  document: "documents",
+  ai_summary: "timeline",
+};
 
 export function canManageReminders(actor: Actor, patientId: string, ctx: AccessContext): boolean {
   if (actor.role === "patient") return actor.patientId === patientId;

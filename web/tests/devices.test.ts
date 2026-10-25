@@ -30,9 +30,6 @@ test("a device is on only while a recent number is still arriving", () => {
   assert.match(on.headline, /Oura Ring is on/);
   const offline = devicePresence("Oura Ring", [{ ...reading, recordedAt: new Date(now - WORN_WINDOW_MS - 60_000).toISOString() }], now);
   assert.equal(offline.on, false);
-  const example = devicePresence("Oura Ring", [{ ...reading, recordedAt: new Date(now - WORN_WINDOW_MS - 60_000).toISOString() }], now, true);
-  assert.equal(example.on, true);
-  assert.match(example.headline, /Oura Ring is on/);
   assert.equal(offline.on, false);
   assert.match(offline.headline, /Oura Ring is offline/);
   assert.match(offline.detail, /last number arrived/i);
@@ -176,11 +173,11 @@ test("vendor payloads become the metrics the record stores", () => {
     steps: { rollupDataPoints: [{ civilStartTime: { date: { year: 2026, month: 10, day: 10 } }, steps: { countSum: "4100" } }] },
     oxygen: { dataPoints: [{ dailyOxygenSaturation: { date: { year: 2026, month: 10, day: 10 }, averagePercentage: 96 } }] },
   });
-  assert.deepEqual(google.map((item) => [item.metric, item.value]), [
-    ["heart_rate", 61],
-    ["sleep_hours", 6.8],
-    ["steps", 4100],
-    ["blood_oxygen", 96],
+  assert.deepEqual(google.map((item) => [item.metric, item.value, item.day]), [
+    ["heart_rate", 61, "2026-10-09"],
+    ["sleep_hours", 6.8, "2026-10-09"],
+    ["steps", 4100, "2026-10-10"],
+    ["blood_oxygen", 96, "2026-10-10"],
   ]);
 
   const oura = readingsFromVendor("oura", {
@@ -188,18 +185,82 @@ test("vendor payloads become the metrics the record stores", () => {
     sleep: { data: [{ day: "2026-10-10", total_sleep_duration: 25200, average_heart_rate: 54.2 }] },
     oxygen: { data: [{ day: "2026-10-10", spo2_percentage: { average: 97 } }] },
   });
-  assert.deepEqual(oura.map((item) => item.value), [2400, 7, 54, 97]);
+  assert.deepEqual(oura.filter((item) => item.latest).map((item) => item.value), [2400, 7, 54, 97]);
+  // The previous day's step total is kept too, so a finished day has its final count.
+  assert.deepEqual(oura.filter((item) => !item.latest).map((item) => [item.metric, item.value, item.day]), [["steps", 100, "2026-10-09"]]);
 
   const withings = readingsFromVendor("withings", {
     activity: { status: 0, body: { activities: [{ date: "2026-10-10", steps: 5000, hr_average: 63 }] } },
     measures: { status: 0, body: { measuregrps: [{ date: 1, measures: [{ value: 97, type: 54, unit: 0 }] }] } },
     sleep: { status: 0, body: { series: [{ date: "2026-10-10", data: { total_sleep_time: 28800 } }] } },
   });
-  assert.deepEqual(withings.map((item) => [item.metric, item.value]), [
+  assert.deepEqual(withings.filter((item) => item.latest).map((item) => [item.metric, item.value]), [
     ["steps", 5000],
     ["heart_rate", 63],
     ["blood_oxygen", 97],
     ["sleep_hours", 8],
   ]);
   assert.deepEqual(readingsFromVendor("withings", { activity: { status: 401, body: { activities: [{ steps: 9 }] } } }), []);
+});
+
+test("a nap does not replace the night's sleep for that day", () => {
+  const oura = readingsFromVendor("oura", {
+    sleep: {
+      data: [
+        { day: "2026-10-20", type: "long_sleep", total_sleep_duration: 27000, average_heart_rate: 55 },
+        { day: "2026-10-20", type: "late_nap", total_sleep_duration: 1440, average_heart_rate: 71 },
+      ],
+    },
+  });
+  assert.deepEqual(oura.map((item) => [item.metric, item.value]), [
+    ["sleep_hours", 7.5],
+    ["heart_rate", 55],
+  ]);
+  const google = readingsFromVendor("google_health", {
+    sleep: {
+      dataPoints: [
+        { sleep: { interval: { endTime: "2026-10-20T12:30:00Z" }, summary: { minutesAsleep: "450" } } },
+        { sleep: { interval: { endTime: "2026-10-20T21:00:00Z" }, summary: { minutesAsleep: "25" } } },
+      ],
+    },
+  });
+  assert.deepEqual(google.map((item) => [item.metric, item.value]), [["sleep_hours", 7.5]]);
+});
+
+test("syncing the same day twice updates one reading and sends one notice", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sha-devices-"));
+  const store = new FileHealthStore(dir);
+  const eleanorProfile = await store.verifyCredentials("eleanor.walsh@demo.seniorhelp.test", DEMO_PASSWORD);
+  const helenProfile = await store.verifyCredentials("helen.walsh@demo.seniorhelp.test", DEMO_PASSWORD);
+  assert.ok(eleanorProfile && helenProfile);
+  const eleanor = await store.getActor(eleanorProfile.id);
+  const helen = await store.getActor(helenProfile.id);
+  assert.ok(eleanor && helen);
+
+  const before = (await store.getDeviceBoard(eleanor, IDS.eleanorPatient)).readings.length;
+  const notices = async () => (await store.listNotifications(helen)).filter((item) => item.body.includes("Heart rate")).length;
+  const noticesBefore = await notices();
+  const sync = (value: number) =>
+    store.recordDeviceReading(eleanor, { connectionId: IDS.eleanorWatch, metric: "heart_rate", value, recordedAt: new Date().toISOString(), day: "2026-10-20" });
+
+  const first = await sync(118);
+  const second = await sync(118);
+  const third = await sync(124);
+  assert.equal(first.id, second.id);
+  assert.equal(first.id, third.id);
+  const board = await store.getDeviceBoard(eleanor, IDS.eleanorPatient);
+  assert.equal(board.readings.length, before + 1);
+  assert.equal(board.readings.find((item) => item.id === first.id)?.value, 124);
+  assert.equal(await notices(), noticesBefore + 1);
+
+  // A step count for a day that is not over yet is not a "too low" notice. The finished day's total is.
+  await store.saveReadingRange(eleanor, { metric: "steps", low: 3000, high: 15000 });
+  const stepNotices = async () => (await store.listNotifications(helen)).filter((item) => item.title.startsWith("Steps")).length;
+  const stepsBefore = await stepNotices();
+  const morning = await store.recordDeviceReading(eleanor, { connectionId: IDS.eleanorWatch, metric: "steps", value: 400, recordedAt: new Date().toISOString(), day: "2026-10-21", partialDay: true });
+  assert.equal(morning.status, "outside");
+  assert.equal(await stepNotices(), stepsBefore);
+  await store.recordDeviceReading(eleanor, { connectionId: IDS.eleanorWatch, metric: "steps", value: 1200, recordedAt: new Date().toISOString(), day: "2026-10-21", partialDay: false });
+  assert.equal(await stepNotices(), stepsBefore + 1);
+  assert.equal(judgeReading("steps", 20_000, { low: 3000, high: 15000 }, "Watch", { partialDay: true }).alert, true);
 });

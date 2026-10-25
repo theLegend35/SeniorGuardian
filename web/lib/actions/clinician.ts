@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import type { MedicineText } from "@/lib/ai/amounts";
 import { answerClinician, clinicianAssistantReply, type SavedVisit } from "@/lib/ai/clinician";
 import { withProfileAi } from "@/lib/ai/settings";
 import { VISION_TYPES } from "@/lib/ai/provider";
@@ -95,6 +96,7 @@ export async function askClinicianChatAction(_state: ActionState, formData: Form
     if (!asked) return { error: "Type or speak a question, or attach a file." };
     const chunks: string[] = [];
     const visits: SavedVisit[] = [];
+    const medicines: MedicineText[] = [];
     const roster = patients.map((patient) => ({ id: patient.patientId, name: patient.fullName }));
     for (const patient of patients) {
       const chart = await store.getChart(actor, patient.patientId);
@@ -114,6 +116,7 @@ export async function askClinicianChatAction(_state: ActionState, formData: Form
       for (const med of chart.medications ?? []) {
         if (med.status !== "active") continue;
         lines.push(`${med.name}: ${med.instructions}`);
+        medicines.push({ id: med.id, name: med.name, text: `${med.instructions}\n${med.frequency}` });
       }
       for (const doc of chart.documents ?? []) lines.push(`Record ${doc.title}\n${doc.sourceText}`);
       const board = await store.getDeviceBoard(actor, patient.patientId);
@@ -135,6 +138,7 @@ export async function askClinicianChatAction(_state: ActionState, formData: Form
         visits,
         history,
         image,
+        medicines,
       }),
     );
     await store.appendClinicianMessage(actor, {

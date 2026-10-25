@@ -6,27 +6,41 @@ import { useEffect } from "react";
 import type { Locale } from "@/lib/i18n";
 
 const SKIP = "script, style, noscript, textarea, input, [translate='no']";
+const CHUNK = 60;
+const MAX_LENGTH = 500;
+const RETRY_MS = 60_000;
 const cache = new Map<string, string>();
+// Phrases the server already answered on this visit. A phrase it could not translate stays in English
+// instead of being asked for again each time the page changes.
+const asked = new Set<string>();
+// After a failed request (offline, server error, too many requests), wait before asking again.
+let pausedUntil = 0;
 
 function phrase(value: string | null | undefined) {
   const trimmed = value?.trim() ?? "";
-  if (trimmed.length < 2) return null;
+  if (trimmed.length < 2 || trimmed.length > MAX_LENGTH) return null;
   if (/^[\d\s:./%+-]+$/.test(trimmed)) return null;
   if (trimmed.includes("@")) return null;
   return trimmed;
 }
 
-async function load(texts: string[]) {
-  const missing = [...new Set(texts)].filter((text) => !cache.has(text));
-  for (let index = 0; index < missing.length; index += 24) {
-    const chunk = missing.slice(index, index + 24);
+/** Returns false when the request failed, so the caller can try again later. */
+async function load(texts: string[]): Promise<boolean> {
+  if (Date.now() < pausedUntil) return false;
+  const missing = [...new Set(texts)].filter((text) => !cache.has(text) && !asked.has(text));
+  for (let index = 0; index < missing.length; index += CHUNK) {
+    const chunk = missing.slice(index, index + CHUNK);
     const response = await fetch("/api/i18n/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texts: chunk }),
-    });
-    if (!response.ok) return;
-    const data = (await response.json()) as { translations?: Array<string | null> };
+    }).catch(() => null);
+    if (!response?.ok) {
+      pausedUntil = Date.now() + RETRY_MS;
+      return false;
+    }
+    chunk.forEach((text) => asked.add(text));
+    const data = (await response.json().catch(() => ({}))) as { translations?: Array<string | null> };
     chunk.forEach((text, item) => {
       const next = data.translations?.[item];
       if (!next) return;
@@ -34,6 +48,7 @@ async function load(texts: string[]) {
       cache.set(next, next);
     });
   }
+  return true;
 }
 
 function paint() {
@@ -50,7 +65,7 @@ function paint() {
     if (!key) continue;
     const next = cache.get(key);
     if (!next) {
-      missing.push(key);
+      if (!asked.has(key)) missing.push(key);
       continue;
     }
     if (next === key) continue;
@@ -67,8 +82,9 @@ function paint() {
       const key = phrase(raw);
       if (!key) continue;
       const next = cache.get(key);
-      if (!next) missing.push(key);
-      else if (next !== key && next !== raw) el.setAttribute(name, next);
+      if (!next) {
+        if (!asked.has(key)) missing.push(key);
+      } else if (next !== key && next !== raw) el.setAttribute(name, next);
     }
   });
 
@@ -81,19 +97,26 @@ export function PageTranslator({ locale }: { locale: Locale }) {
   useEffect(() => {
     if (locale !== "es") {
       cache.clear();
+      asked.clear();
+      pausedUntil = 0;
       return;
     }
     let cancel = false;
     let applying = false;
     let pending = false;
     let timer = 0;
+    let retry = 0;
 
     async function apply() {
       if (cancel || applying) return;
       applying = true;
       try {
         const missing = paint();
-        if (missing.length) await load(missing);
+        if (missing.length && !(await load(missing)) && !cancel) {
+          // Try once more after the pause, without waiting for the page to change.
+          window.clearTimeout(retry);
+          retry = window.setTimeout(() => schedule(), RETRY_MS + 100);
+        }
         if (!cancel) paint();
       } finally {
         applying = false;
@@ -119,6 +142,7 @@ export function PageTranslator({ locale }: { locale: Locale }) {
     return () => {
       cancel = true;
       window.clearTimeout(timer);
+      window.clearTimeout(retry);
       observer.disconnect();
     };
   }, [locale, pathname]);

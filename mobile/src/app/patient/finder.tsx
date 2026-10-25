@@ -44,7 +44,7 @@ function PlaceCard({ place, index, selected, onSelect }: { place: CarePlace; ind
       <Pressable accessibilityRole="button" onPress={onSelect} style={{ gap: 12 }}>
       <View style={{ flexDirection: "row", gap: 12 }}>
         <View style={[styles.index, { backgroundColor: selected ? colors.apricot : colors.brand700 }]}>
-          <AppText size={15} weight="heavy" color={colors.white}>
+          <AppText size={15} weight="heavy" color={selected ? colors.ink950 : colors.white}>
             {index + 1}
           </AppText>
         </View>

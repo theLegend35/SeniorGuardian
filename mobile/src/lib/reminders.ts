@@ -1,7 +1,7 @@
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 
 import { listMedicines, listPeople, listVisits, todayDoses } from "@/lib/records";
 import { planReminders, type PlannedReminder, type ReminderPerson } from "@/lib/plan-reminders";
@@ -48,6 +48,25 @@ function upcomingFrom(reminders: PlannedReminder[]): UpcomingReminder[] {
 }
 let savedToken = "";
 const listeners = new Set<(status: ReminderStatus) => void>();
+
+/**
+ * Whether care-team alerts (push messages sent by the website) can reach this phone.
+ * "needs-setup" means this build has no EAS project ID, so no push address can be made. See the README.
+ */
+export type PushState = "on" | "needs-setup" | "off" | "unavailable" | "failed";
+let pushState: PushState = Platform.OS === "web" ? "unavailable" : "off";
+const pushListeners = new Set<(state: PushState) => void>();
+
+function setPushState(state: PushState) {
+  pushState = state;
+  for (const listener of pushListeners) listener(state);
+}
+
+export function subscribePush(listener: (state: PushState) => void): () => void {
+  pushListeners.add(listener);
+  listener(pushState);
+  return () => pushListeners.delete(listener);
+}
 
 function publish(status: ReminderStatus) {
   current = status;
@@ -259,8 +278,30 @@ export async function syncReminders(actor: Actor | null): Promise<ReminderStatus
 
 export async function setPhoneReminders(actor: Actor, enabled: boolean): Promise<void> {
   await writeEnabled(enabled);
-  if (enabled) await requestReminderPermission();
+  if (enabled) {
+    await requestReminderPermission();
+    // Permission may be new, so care-team alerts can register now too.
+    await registerPushToken(actor.profileId).catch(() => undefined);
+  }
   await syncReminders(actor);
+}
+
+/**
+ * Android 12 and newer can hold a reminder for a few minutes to save battery unless "Alarms & reminders"
+ * is allowed for the app. This opens that setting (the app list, where Senior Guardian is listed).
+ */
+export async function openExactAlarmSettings(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  try {
+    await Linking.sendIntent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM");
+  } catch {
+    await Linking.openSettings();
+  }
+}
+
+/** True on Android 12 (API 31) and newer, where exact alarms need that setting. */
+export function exactAlarmSettingApplies(): boolean {
+  return Platform.OS === "android" && typeof Platform.Version === "number" && Platform.Version >= 31;
 }
 
 export async function sendTestReminder(): Promise<void> {
@@ -280,21 +321,41 @@ export async function sendTestReminder(): Promise<void> {
   });
 }
 
+/** The EAS project ID that push addresses are made for: app.json (written by `npx eas-cli init`), or EXPO_PUBLIC_EAS_PROJECT_ID. */
+export function easProjectId(): string | null {
+  const fromConfig = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  const fromEnv = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
+  return (typeof fromConfig === "string" && fromConfig.trim()) || fromEnv || null;
+}
+
 export async function registerPushToken(profileId: string): Promise<void> {
-  if (Platform.OS === "web" || !Device.isDevice) return;
+  if (Platform.OS === "web" || !Device.isDevice) {
+    setPushState("unavailable");
+    return;
+  }
   const permission = await permissionState();
-  if (permission !== "granted") return;
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-  if (!projectId) return;
+  if (permission !== "granted") {
+    setPushState("off");
+    return;
+  }
+  const projectId = easProjectId();
+  if (!projectId) {
+    setPushState("needs-setup");
+    if (__DEV__) console.warn("Care-team push alerts are off: this build has no EAS project ID. Run `npx eas-cli init` in mobile/, then rebuild. See the README.");
+    return;
+  }
   try {
     const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     savedToken = token;
-    await supabase.from("device_push_tokens").upsert(
+    const saved = await supabase.from("device_push_tokens").upsert(
       { profile_id: profileId, token, platform: Platform.OS === "ios" ? "ios" : "android", updated_at: new Date().toISOString() },
       { onConflict: "profile_id,token" },
     );
-  } catch {
-    // Local reminders still ring without a push token.
+    setPushState(saved.error ? "failed" : "on");
+  } catch (error) {
+    // Local reminders still ring without a push token. On Android a push address also needs Firebase set up (README).
+    setPushState("failed");
+    if (__DEV__) console.warn("Care-team push alerts could not register:", error instanceof Error ? error.message : error);
   }
 }
 
@@ -303,5 +364,6 @@ export async function forgetThisPhone(): Promise<void> {
     await supabase.from("device_push_tokens").delete().eq("token", savedToken);
     savedToken = "";
   }
+  setPushState(Platform.OS === "web" ? "unavailable" : "off");
   await cancelScheduled().catch(() => undefined);
 }

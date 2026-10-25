@@ -68,7 +68,7 @@ export function DayShowcase() {
                   <step.icon className="size-5" aria-hidden />
                 </span>
                 <span className="min-w-0">
-                  <span className={cx("block font-display text-[0.8rem] font-extrabold tracking-[0.14em] uppercase", active ? "text-apricot-500" : "text-ink-400")}>{step.time}</span>
+                  <span className={cx("block font-display text-[0.8rem] font-extrabold tracking-[0.14em] uppercase", active ? "text-apricot-700" : "text-ink-400")}>{step.time}</span>
                   <span className="block font-display text-[1.2rem] leading-tight font-extrabold text-ink-950">{step.title}</span>
                 </span>
               </span>

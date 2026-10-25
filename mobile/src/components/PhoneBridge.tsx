@@ -4,6 +4,7 @@ import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
 import { useAuth } from "@/lib/auth";
+import { startBackgroundRefresh } from "@/lib/background-sync";
 import { mobilePath } from "@/lib/paths";
 import { registerPushToken, syncReminders } from "@/lib/reminders";
 
@@ -20,6 +21,15 @@ export function PhoneBridge() {
     if (!actor) return;
     void registerPushToken(actor.profileId);
     void syncReminders(actor);
+    // Keeps reminders current when a medicine changes elsewhere and the app is not opened.
+    if (actor.role !== "doctor") void startBackgroundRefresh();
+  }, [actor]);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || !actor) return;
+    // A notice that arrives while the app is open can mean a medicine changed, so refresh what rings.
+    const sub = Notifications.addNotificationReceivedListener(() => void syncReminders(actor));
+    return () => sub.remove();
   }, [actor]);
 
   useEffect(() => {

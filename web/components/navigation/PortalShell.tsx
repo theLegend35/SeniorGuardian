@@ -115,7 +115,7 @@ function NavLink({ item, pathname, onClick, badge, dot }: { item: NavItem; pathn
       <span className="flex-1">{item.label}</span>
       {dot ? <UnreadDot /> : null}
       {badge ? (
-        <span className="grid min-w-6 place-items-center rounded-full bg-apricot-500 px-1.5 text-[0.75rem] font-bold text-white">{badge}</span>
+        <span className="grid min-w-6 place-items-center rounded-full bg-apricot-500 px-1.5 text-[0.75rem] font-bold text-ink-950">{badge}</span>
       ) : null}
     </Link>
   );
@@ -166,7 +166,7 @@ export function PortalShell({
   const sidebar = (onNavigate?: () => void) => (
     <>
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        <p className="mb-2 px-3 text-[0.75rem] font-bold tracking-[0.12em] text-ink-400 uppercase">{ROLE_LABEL[role]} portal</p>
+        <p className="mb-2 px-3 text-[0.75rem] font-bold tracking-[0.12em] text-ink-400 uppercase">{`${ROLE_LABEL[role]} portal`}</p>
         <nav aria-label="Main" className="grid gap-0.5">
           {nav.main.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} onClick={onNavigate} dot={showChatDot && item.href.endsWith("/chat")} />
@@ -243,7 +243,7 @@ export function PortalShell({
         </div>
       </header>
 
-      <main id="main" className="mx-auto max-w-[76rem] px-4 pt-6 pb-32 sm:px-6 lg:px-10 lg:pt-8 lg:pb-16">
+      <main id="main" className="mx-auto max-w-[76rem] px-4 pt-6 pb-44 sm:px-6 lg:px-10 lg:pt-8 lg:pb-28">
         {children}
       </main>
 

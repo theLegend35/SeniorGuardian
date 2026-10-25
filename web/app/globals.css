@@ -18,7 +18,8 @@
   --color-ink-700: #33474f;
   --color-ink-600: #4b5b62;
   --color-ink-500: #5d6c72;
-  --color-ink-400: #8a969b;
+  /* Darkened from #8a969b so small grey text reaches 4.5:1 on white and on the canvas color. */
+  --color-ink-400: #616e74;
 
   --color-brand-50: #edf8f6;
   --color-brand-100: #d3efea;

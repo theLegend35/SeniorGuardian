@@ -14,7 +14,8 @@ export const colors = {
   ink700: "#33474f",
   ink600: "#4b5b62",
   ink500: "#5d6c72",
-  ink400: "#8a969b",
+  // Darkened from #8a969b so small grey text reaches 4.5:1 on white and on the canvas color. The website matches.
+  ink400: "#616e74",
   brand50: "#edf8f6",
   brand100: "#d3efea",
   brand200: "#a9ddd4",

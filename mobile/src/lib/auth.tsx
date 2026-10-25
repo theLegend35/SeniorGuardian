@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { stopBackgroundRefresh } from "@/lib/background-sync";
 import { applyReadingScale } from "@/lib/reading";
 import { loadActor } from "@/lib/records";
 import { forgetThisPhone } from "@/lib/reminders";
@@ -63,6 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabaseReady) throw new Error("Add the Supabase public keys to mobile/.env, then restart the app.");
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    if (error && (error.code === "email_not_confirmed" || /email not confirmed/i.test(error.message))) {
+      throw new Error("Confirm your email address first. Open the link we sent you, or sign in on the website to get a new one.");
+    }
     if (error) throw new Error("That email or password is not correct.");
     const { data } = await supabase.auth.getSession();
     const next = data.session ? await loadActor(data.session.user.id) : null;
@@ -75,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await forgetThisPhone().catch(() => undefined);
+    await stopBackgroundRefresh().catch(() => undefined);
     await supabase.auth.signOut();
     setActor(null);
   }, []);

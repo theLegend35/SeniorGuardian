@@ -322,8 +322,11 @@ export type DeviceReading = {
   metric: DeviceMetric;
   value: number;
   unit: string;
+  /** When this app last received the number. */
   recordedAt: string;
   status: ReadingStatus;
+  /** The day the device company says the number belongs to (YYYY-MM-DD). One reading is kept per device, metric, and day. */
+  measuredOn?: string;
 };
 
 export type AppNotification = {

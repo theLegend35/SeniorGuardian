@@ -154,10 +154,11 @@ export function SiteChat({ suspended = false, onOpen }: { suspended?: boolean; o
           });
         }}
         aria-expanded={open}
-        className="dock-button flex min-h-12 items-center gap-2 rounded-2xl bg-brand-950 px-4 text-[1rem] font-semibold text-white hover:bg-brand-800"
+        className="dock-button flex min-h-11 items-center gap-2 rounded-2xl bg-brand-950 px-3 text-[1rem] font-semibold text-white hover:bg-brand-800 sm:min-h-12 sm:px-4"
       >
         {open ? <X className="size-5" aria-hidden /> : <MessageCircle className="size-5" aria-hidden />}
-        {open ? "Close" : "Quick assist"}
+        {/* On a phone the label is read aloud but not shown, so the buttons cover less of the page. */}
+        <span className="sr-only sm:not-sr-only">{open ? "Close" : "Quick assist"}</span>
       </button>
     </div>
   );

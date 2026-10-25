@@ -27,6 +27,11 @@ export default function ForgotPassword() {
       setError("Add the Supabase public keys to mobile/.env, then restart the app.");
       return;
     }
+    if (next.endsWith("@demo.seniorhelp.test")) {
+      setError(null);
+      setNotice("Sample accounts share one password so everyone can try the app. Use the password shown on the sign-in screen.");
+      return;
+    }
     setPending(true);
     setError(null);
     setNotice(null);

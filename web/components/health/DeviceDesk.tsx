@@ -6,9 +6,9 @@ import { Badge, Callout, EmptyState, Field, Select, buttonClass, cx } from "@/co
 import { saveRangeAction, syncDeviceAction } from "@/lib/actions/health";
 import { COMPATIBLE, INCOMPATIBLE, cloudProvider, type CloudProvider } from "@/lib/devices/catalog";
 import { METRICS } from "@/lib/devices/metrics";
-import { devicePresence, EXAMPLE_OURA_ID } from "@/lib/devices/presence";
+import { devicePresence } from "@/lib/devices/presence";
 import type { DeviceBoard } from "@/lib/data/types";
-import { formatWhen } from "@/lib/time";
+import { formatWhen, localDate } from "@/lib/time";
 import type { DeviceConnection, DeviceMetric, DeviceReading } from "@/types/domain";
 
 const METRIC_ORDER: DeviceMetric[] = ["heart_rate", "sleep_hours", "steps", "blood_oxygen"];
@@ -63,7 +63,7 @@ export function DeviceReadingList({ board }: { board: DeviceBoard }) {
     <div className="grid gap-4">
       {shown.map((connection) => {
         const own = board.readings.filter((reading) => reading.connectionId === connection.id);
-        const presence = devicePresence(connection.label, own, Date.now(), connection.id === EXAMPLE_OURA_ID);
+        const presence = devicePresence(connection.label, own);
         return (
           <article key={connection.id} className="card p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -124,7 +124,8 @@ export function DeviceCompatibility({ tone = "light" }: { tone?: "light" | "dark
 }
 
 export function DeviceDesk({ board, banner, attention }: { board: DeviceBoard; banner?: string | null; attention?: string | null }) {
-  const flagged = board.readings.find((item) => item.status === "outside");
+  // Only a reading from today raises the banner; older numbers stay in the history below.
+  const flagged = board.readings.find((item) => item.status === "outside" && localDate(new Date(item.recordedAt)) === localDate());
   const cloudIds = new Set<string>(COMPATIBLE.map((item) => item.id));
   const other = board.connections.filter((item) => !cloudIds.has(item.provider) && board.readings.some((reading) => reading.connectionId === item.id));
   return (
@@ -141,7 +142,7 @@ export function DeviceDesk({ board, banner, attention }: { board: DeviceBoard; b
           const connection = connectionFor(board, spec.id);
           const own = connection ? board.readings.filter((reading) => reading.connectionId === connection.id) : [];
           const newest = own[0];
-          const presence = connection ? devicePresence(connection.label, own, Date.now(), connection.id === EXAMPLE_OURA_ID) : null;
+          const presence = connection ? devicePresence(connection.label, own) : null;
           const showing = Boolean(connection?.linked || own.length);
           const focused = attention === spec.id;
           return (

@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { DoseProgress, DoseRow, EmergencyCard, ReadingGrid, ReminderHero, TimelineList, VisitRow } from "@/components/records";
 import { AppText, Button, Callout, Card, CardHeader, Disclaimer, EmptyState, ErrorNote, IconTile, Loading, PageHeader, Screen, TopBar, useAsync, type Tone } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { formatDate, greeting } from "@/lib/format";
+import { formatDate, greeting, localDate } from "@/lib/format";
 import { listReadings, listTimeline, listVisits, loadHealth, todayDoses } from "@/lib/records";
 import { colors, radius, shadows } from "@/lib/theme";
 
@@ -31,7 +31,8 @@ export default function Today() {
   const remaining = list.filter((dose) => !dose.taken).length;
   const upcoming = (visits.data ?? []).filter((visit) => visit.status === "scheduled" && new Date(visit.startsAt).getTime() >= Date.now());
   const next = upcoming[0];
-  const flagged = devices.data?.readings.find((reading) => reading.status === "outside");
+  // Only a reading from today raises the banner, so an old number does not stay on the screen.
+  const flagged = devices.data?.readings.find((reading) => reading.status === "outside" && localDate(new Date(reading.recordedAt)) === localDate());
   const summary =
     remaining === 0 && list.length
       ? "All of today's medicines are marked taken. Nice work."
@@ -87,7 +88,7 @@ export default function Today() {
           <CardHeader
             icon={Watch}
             title={devices.data.connections[0]?.label || "Devices"}
-            description={devices.data.connections.some((item) => item.id === "c000979e-2bb5-4840-936e-b02e65e2c6df") ? "This example ring stays on. The circle fills through the saved range." : "The circle fills as the number moves through the saved range."}
+            description="The circle fills as the number moves through the saved range."
             action={<Button label="Devices" icon={ArrowRight} size="sm" variant="ghost" onPress={() => router.push("/patient/devices")} />}
           />
           <ReadingGrid readings={devices.data.readings} />

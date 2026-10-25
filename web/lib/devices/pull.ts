@@ -1,13 +1,14 @@
 import type { HealthStore } from "@/lib/data/types";
 import { cloudProvider, isCloudProvider, providerConfigured } from "@/lib/devices/catalog";
 import { fetchReadings, refreshCloud } from "@/lib/devices/sync";
+import { localDate, zonedTime } from "@/lib/time";
 import type { Actor } from "@/types/domain";
 
 export async function syncStoredDevice(
   store: HealthStore,
   actor: Actor,
   connectionId: string,
-): Promise<{ account: string; count: number; outside: boolean }> {
+): Promise<{ account: string; count: number; outside: boolean; alerted: boolean }> {
   if (!actor.patientId) throw new Error("Sign in as the patient before syncing a device.");
   const board = await store.getDeviceBoard(actor, actor.patientId);
   const connection = board.connections.find((item) => item.id === connectionId);
@@ -23,11 +24,30 @@ export async function syncStoredDevice(
     await store.linkDeviceAccount(actor, connectionId, secret);
   }
   const samples = await fetchReadings(connection.provider, secret.accessToken);
-  const recordedAt = new Date().toISOString();
+  const now = new Date();
+  const today = localDate(now);
   let outside = false;
+  let alerted = false;
   for (const sample of samples) {
-    const reading = await store.recordDeviceReading(actor, { connectionId, metric: sample.metric, value: sample.value, recordedAt });
-    outside = outside || reading.status === "outside";
+    const day = sample.day ?? today;
+    // The newest numbers are stamped with this sync, so the device shows as on. A finished earlier day
+    // keeps the end of that day, so it sorts before today's numbers.
+    const recordedAt = sample.latest || day >= today ? now : new Date(Math.min(now.getTime(), endOfDay(day).getTime()));
+    const reading = await store.recordDeviceReading(actor, {
+      connectionId,
+      metric: sample.metric,
+      value: sample.value,
+      recordedAt: recordedAt.toISOString(),
+      day,
+      partialDay: day >= today,
+    });
+    if (sample.latest) outside = outside || reading.status === "outside";
+    alerted = alerted || reading.alerted;
   }
-  return { account, count: samples.length, outside };
+  return { account, count: samples.filter((sample) => sample.latest).length, outside, alerted };
+}
+
+function endOfDay(day: string): Date {
+  const [year, month, date] = day.split("-").map(Number);
+  return zonedTime(year, month, date, 23, 59, 0);
 }

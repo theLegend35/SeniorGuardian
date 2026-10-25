@@ -1,6 +1,6 @@
 import { router, type Href } from "expo-router";
-import { Bell, BellRing, CalendarDays, Check, Languages, LogOut, MessageSquare, Pill, Send, Smartphone, Type, UserRound } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { AlarmClock, Bell, BellRing, CalendarDays, Check, Languages, LogOut, MessageSquare, Pill, Send, Smartphone, Type, UserRound } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -35,7 +35,7 @@ import { useAuth } from "@/lib/auth";
 import { clock, formatDate, relativeDay, timeAgo } from "@/lib/format";
 import { mobilePath } from "@/lib/paths";
 import { listMessages, listNotices, markChatRead, markNoticeRead, sendMessage, updateProfile } from "@/lib/records";
-import { sendTestReminder, setPhoneReminders } from "@/lib/reminders";
+import { exactAlarmSettingApplies, openExactAlarmSettings, sendTestReminder, setPhoneReminders, subscribePush, type PushState } from "@/lib/reminders";
 import { colors, fonts, radius, shadows } from "@/lib/theme";
 import { useSpanish } from "@/lib/translate";
 import type { Access, PersonCard, Role, TextScale } from "@/lib/types";
@@ -56,11 +56,11 @@ export function AlertsScreen() {
       <PageHeader
         eyebrow={unread ? `${unread} unread` : "All caught up"}
         title="Alerts"
-        description="Messages and reminders saved to your record. Medicine reminders also ring on this phone when the app is closed."
+        description="Today's messages and reminders. Medicine reminders also ring on this phone when the app is closed."
       />
       <ErrorNote title="Could not load alerts" body={error} />
       {loading ? <Loading /> : null}
-      {!loading && data?.length === 0 ? <EmptyState icon={Bell} title="No alerts yet" body="Medicine and visit reminders show up here after they are sent." /> : null}
+      {!loading && data?.length === 0 ? <EmptyState icon={Bell} title="No alerts today" body="Medicine and visit reminders show up here on the day they are sent." /> : null}
       {data?.length ? (
         <Card padded={false} style={{ paddingVertical: 4 }}>
           {data.map((notice, index) => (
@@ -230,10 +230,25 @@ export function SettingsScreen() {
 
 // ---------- Phone reminders ----------
 
+const PUSH_TEXT: Record<PushState, string> = {
+  on: "Care-team alerts are on. Messages and notices from the care team can arrive on this phone.",
+  "needs-setup": "Care-team alerts are not set up in this build of the app yet, so messages and notices show inside the app. Medicine reminders still ring.",
+  off: "Care-team alerts need notification permission on this phone.",
+  unavailable: "Care-team alerts need the iPhone or Android app on a real phone.",
+  failed: "Care-team alerts could not be turned on for this phone. Medicine reminders still ring.",
+};
+
+function usePushState(): PushState {
+  const [state, setState] = useState<PushState>("off");
+  useEffect(() => subscribePush(setState), []);
+  return state;
+}
+
 /** Pass `alertsHref` when this screen is a tab, so it gets the top bar. */
 export function RemindersScreen({ alertsHref }: { alertsHref?: Href } = {}) {
   const { actor } = useAuth();
   const status = useReminderStatus();
+  const push = usePushState();
   const [error, setError] = useState<string | null>(null);
   const [testSent, setTestSent] = useState(false);
   if (!actor) return null;
@@ -324,7 +339,26 @@ export function RemindersScreen({ alertsHref }: { alertsHref?: Href } = {}) {
             A test needs the iPhone or Android app. The browser preview cannot ring.
           </AppText>
         ) : null}
+        <AppText size={13.5} color={colors.ink500}>
+          {PUSH_TEXT[push]}
+        </AppText>
       </Card>
+
+      {!doctor && live && exactAlarmSettingApplies() ? (
+        <Card>
+          <CardHeader
+            icon={AlarmClock}
+            title="Ring on the minute"
+            description="Android can hold a reminder for a few minutes to save battery. Allow Alarms & reminders for Senior Guardian so reminders ring on time."
+          />
+          <Button
+            label="Open Alarms & reminders"
+            icon={AlarmClock}
+            variant="secondary"
+            onPress={() => void openExactAlarmSettings().catch((err: unknown) => setError(errorText(err, "That setting could not open.")))}
+          />
+        </Card>
+      ) : null}
 
       {!doctor ? (
         <Card>
@@ -360,7 +394,7 @@ export function RemindersScreen({ alertsHref }: { alertsHref?: Href } = {}) {
         {(doctor
           ? ["You get an alert when a patient or caregiver messages you.", "Open the alert to go straight to the conversation.", "Patients' medicine reminders never ring on your phone."]
           : [
-              "Add or change a time on the website or here. Open the app and this phone picks it up.",
+              "Add or change a time on the website or here. This phone picks it up when the app opens, and in the background when the phone allows it.",
               "Each reminder repeats the saved label word for word. It does not change a dose.",
               "Doses already marked taken are skipped. The next 7 days are kept on the phone.",
             ]

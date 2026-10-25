@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { inventsAmounts, misattributesAmounts } from "@/lib/ai/amounts";
 import { answerFromRecord, ASSISTANT_SYSTEM } from "@/lib/ai/chat";
 import { explainSourceText } from "@/lib/ai/documents";
 import { aiConfig, appendLimitNote, generateObject, generateText, imagePart, type ChatMessage, type ImageInput } from "@/lib/ai/provider";
@@ -11,17 +12,8 @@ import { analyzeConcernLocal, STANDARD_WARNING_SIGNS, urgencyFromText } from "@/
 import { APP_TIME_ZONE, localDate } from "@/lib/time";
 import type { ConcernAnalysis, ProposedAction } from "@/types/domain";
 
-const AMOUNT = /(\d+(?:[.,]\d+)?)\s*(mg|mcg|µg|g|ml|units?|iu|tablets?|capsules?|pills?|puffs?|drops?)\b/gi;
-
-/** Every amount the model writes must already appear in the source text it was given. */
-export function inventsAmounts(output: string, source: string): boolean {
-  const known = source.toLowerCase().replace(/,/g, "");
-  for (const match of output.matchAll(AMOUNT)) {
-    const number = match[1].replace(/,/g, "");
-    if (!new RegExp(`(^|[^\\d.])${number.replace(".", "\\.")}([^\\d]|$)`).test(known)) return true;
-  }
-  return false;
-}
+/** Every amount the model writes must already appear, with its unit, in the source text it was given. */
+export { inventsAmounts, misattributesAmounts };
 
 export async function aiStatus(profileId: string) {
   const view = await readAiChoice(profileId);
@@ -89,8 +81,12 @@ export async function assistantReply(question: string, context: PatientContext, 
   const result = await generateObject(messages, AssistantSchema, "assistant_reply", { maxTokens: 2048 });
   if (!result?.reply.trim()) return { ...local, content: appendLimitNote(local.content) };
 
+  // An amount must be in the record, and on the label of the medicine it is said about.
   const source = JSON.stringify(context);
-  if (inventsAmounts(result.reply, source)) return { ...local, content: appendLimitNote(local.content) };
+  const medicines = context.medications.map((med) => ({ id: med.id, name: med.name, text: `${med.instructions}\n${med.frequency}` }));
+  if (inventsAmounts(result.reply, source) || misattributesAmounts(result.reply, medicines, result.medicationIds)) {
+    return { ...local, content: appendLimitNote(local.content) };
+  }
 
   if (result.action.type === "set_reminder") {
     const med = context.medications.find((item) => item.id === result.action.medicationId);
@@ -157,6 +153,17 @@ export async function analyzeConcern(input: { description: string; image: ImageI
     "health_concern_review",
   );
   if (!result) return { ...local, uncertainty: appendLimitNote(local.uncertainty) };
+  // The review must not name a dose the person did not write.
+  const written = [
+    result.summary,
+    ...result.observations,
+    ...result.possibilities,
+    ...result.warningSigns,
+    ...result.usefulInformation,
+    result.whenToSeekCare,
+    result.uncertainty,
+  ].join("\n");
+  if (inventsAmounts(written, input.description)) return { ...local, uncertainty: appendLimitNote(local.uncertainty) };
 
   const ruleUrgency = urgencyFromText(input.description);
   const urgency = ruleUrgency === "prompt" && result.urgency === "routine" ? "prompt" : result.urgency;

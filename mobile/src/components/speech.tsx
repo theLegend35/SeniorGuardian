@@ -114,7 +114,7 @@ export function MicButton({ listening, onPress }: { listening: boolean; onPress:
       onPress={onPress}
       style={[styles.mic, listening && styles.micOn]}
     >
-      <Mic size={18} color={listening ? colors.white : colors.brand800} />
+      <Mic size={18} color={listening ? colors.ink950 : colors.brand800} />
     </Pressable>
   );
 }

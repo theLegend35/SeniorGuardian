@@ -292,7 +292,8 @@ const BUTTON: Record<Variant, { bg: string; fg: string; border: string }> = {
   ghost: { bg: "transparent", fg: colors.ink700, border: "transparent" },
   danger: { bg: colors.white, fg: colors.danger700, border: colors.danger200 },
   dark: { bg: colors.ink950, fg: colors.white, border: colors.ink950 },
-  apricot: { bg: colors.apricot, fg: colors.white, border: colors.apricot },
+  // Dark text on orange: white on this orange is only 2.8:1, dark ink is 6.3:1 (the website's orange buttons match).
+  apricot: { bg: colors.apricot, fg: colors.ink950, border: colors.apricot },
   light: { bg: "rgba(255,255,255,0.12)", fg: colors.white, border: "rgba(255,255,255,0.12)" },
   emergency: { bg: colors.danger600, fg: colors.white, border: colors.danger600 },
 };

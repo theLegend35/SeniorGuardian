@@ -19,10 +19,11 @@ import { MetricGauges } from "@/components/health/MetricGauge";
 import { AppointmentRow, DoseProgress, DoseRow, TimelineList, patientEventHref } from "@/components/health/records";
 import { Avatar, Badge, Callout, Card, CardHeader, Disclaimer, EmptyState, LinkButton, cx } from "@/components/ui/primitives";
 import { METRICS } from "@/lib/devices/metrics";
-import { devicePresence, EXAMPLE_OURA_ID } from "@/lib/devices/presence";
+import { devicePresence } from "@/lib/devices/presence";
+import { todaysAlerts } from "@/lib/notifications/today";
 import { requireRole } from "@/lib/auth/session";
 import { getStore } from "@/lib/data/index";
-import { formatDate, greeting, timeAgo } from "@/lib/time";
+import { formatDate, greeting, localDate, timeAgo } from "@/lib/time";
 
 export const metadata = { title: "Today" };
 
@@ -43,20 +44,21 @@ export default async function PatientDashboard() {
     store.listNotifications(actor),
     store.getDeviceBoard(actor, patientId),
   ]);
-  const flagged = devices.readings.find((reading) => reading.status === "outside");
+  // Only a reading from today raises the banner, so an old number does not stay on the page.
+  const flagged = devices.readings.find((reading) => reading.status === "outside" && localDate(new Date(reading.recordedAt)) === localDate());
   const sortedDoses = [...doses].sort((a, b) => a.time.localeCompare(b.time));
   const upcoming = (chart.appointments ?? [])
     .filter((item) => item.status === "scheduled" && new Date(item.startsAt) >= new Date())
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const next = upcoming[0];
-  const unread = notifications.filter((item) => !item.read).slice(0, 3);
+  const unread = todaysAlerts(notifications).filter((item) => !item.read).slice(0, 3);
   const team = chart.careTeam;
   const doctors = team?.doctors.filter((item) => item.status === "active") ?? [];
   const caregivers = team?.caregivers.filter((item) => item.status === "active") ?? [];
   const remaining = sortedDoses.filter((dose) => !dose.taken).length;
   const device = devices.connections.find((item) => devices.readings.some((reading) => reading.connectionId === item.id));
   const deviceReadings = device ? devices.readings.filter((reading) => reading.connectionId === device.id) : [];
-  const presence = device ? devicePresence(device.label, deviceReadings, Date.now(), device.id === EXAMPLE_OURA_ID) : null;
+  const presence = device ? devicePresence(device.label, deviceReadings) : null;
   const latestDevice = new Map<string, (typeof deviceReadings)[number]>();
   for (const reading of deviceReadings) {
     if (!latestDevice.has(reading.metric)) latestDevice.set(reading.metric, reading);

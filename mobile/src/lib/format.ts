@@ -5,6 +5,11 @@ export function localDate(now = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Midnight at the start of this phone's day. */
+export function startOfLocalDay(now = new Date()): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
 export function formatTime(time: string): string {
   const [hourText, minute] = time.split(":");
   const hour = Number(hourText);

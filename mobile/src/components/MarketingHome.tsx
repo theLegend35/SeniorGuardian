@@ -23,7 +23,7 @@ export function MarketingHome() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 96 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.top, { paddingTop: insets.top + 12 }]}>
           <Logo />
           <Pressable accessibilityRole="button" onPress={() => router.push("/sign-in")} hitSlop={8}>

@@ -8,8 +8,14 @@ import { clinicianFallback, draftClinicianRequest, rulesReply, wallClock } from 
 import { DEMO_PASSWORD, demoAccountFor } from "@/lib/demo/ids";
 import { wearableQuickStats } from "@/lib/devices/quick-stats";
 import type { DeviceBoard } from "@/lib/data/types";
+import { appWallTime, localDate } from "@/lib/time";
 
 const emptyBoard: DeviceBoard = { connections: [], ranges: [], readings: [] };
+
+/** A Central date some days from now, so these tests never fall into the past. */
+function dayFromNow(days: number): string {
+  return localDate(new Date(Date.now() + days * 24 * 60 * 60 * 1000));
+}
 
 test("the three sample emails sign in with the sample password", () => {
   assert.equal(demoAccountFor("eleanor.walsh@demo.seniorhelp.test")?.key, "eleanor");
@@ -96,8 +102,9 @@ test("a clinician visit or note is drafted only from their words and an authoriz
     { id: "eleanor", name: "Eleanor Walsh" },
     { id: "arthur", name: "Arthur Walsh" },
   ];
+  const visitDay = dayFromNow(3);
   const visit = draftClinicianRequest(
-    "Schedule a visit for Eleanor Walsh with Dr. Marcus Hale on 2026-10-20 at 10:00 at Riverside Family Clinic",
+    `Schedule a visit for Eleanor Walsh with Dr. Marcus Hale on ${visitDay} at 10:00 at Riverside Family Clinic`,
     patients,
   );
   assert.equal(visit?.type, "add_appointment");
@@ -105,12 +112,12 @@ test("a clinician visit or note is drafted only from their words and an authoriz
     assert.equal(visit.patientId, "eleanor");
     assert.equal(visit.provider, "Dr. Marcus Hale");
     assert.equal(visit.location, "Riverside Family Clinic");
-    assert.match(visit.startsAt, /^2026-10-20T/);
+    assert.match(visit.startsAt, new RegExp(`^${visitDay}T`));
   }
   const note = draftClinicianRequest("Save a note for Eleanor Walsh: the ankle still swells by evening", patients);
   assert.equal(note?.type, "add_note");
   if (note?.type === "add_note") assert.equal(note.body, "the ankle still swells by evening");
-  assert.equal(draftClinicianRequest("Schedule a visit for someone else with Dr. Hale on 2026-10-20 at 10:00", patients), null);
+  assert.equal(draftClinicianRequest(`Schedule a visit for someone else with Dr. Hale on ${visitDay} at 10:00`, patients), null);
   assert.equal(draftClinicianRequest("Change Lisinopril to 20 mg", patients), null);
   const clock = wallClock("2026-10-20T10:00:00Z");
   assert.equal(clock?.toISOString(), "2026-10-20T15:00:00.000Z");
@@ -120,9 +127,9 @@ test("a clinician greeting and visit question stay plain", () => {
   assert.match(clinicianFallback("hello", "", []), /Hello/);
   assert.doesNotMatch(clinicianFallback("hello", "", []), /not in the saved records|cannot change a dose|given you access/);
   const visits = [
-    { patientName: "Eleanor Walsh", startsAt: "2026-10-21T15:30:00.000Z", location: "Riverside Family Clinic, 410 Oak Street" },
-    { patientName: "Eleanor Walsh", startsAt: "2026-10-20T15:00:00.000Z", location: "Riverside Family Clinic" },
-    { patientName: "Ruth Alvarez", startsAt: "2026-10-18T15:00:00.000Z", location: "Riverside Family Clinic, 410 Oak Street" },
+    { patientName: "Eleanor Walsh", startsAt: appWallTime(`${dayFromNow(4)}T10:30`).toISOString(), location: "Riverside Family Clinic, 410 Oak Street" },
+    { patientName: "Eleanor Walsh", startsAt: appWallTime(`${dayFromNow(3)}T10:00`).toISOString(), location: "Riverside Family Clinic" },
+    { patientName: "Ruth Alvarez", startsAt: appWallTime(`${dayFromNow(1)}T10:00`).toISOString(), location: "Riverside Family Clinic, 410 Oak Street" },
   ];
   const answer = clinicianFallback("Who on my list has a visit coming up?", "", visits);
   assert.match(answer, /Eleanor Walsh:/);

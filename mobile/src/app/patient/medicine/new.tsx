@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { Button, Callout, Card, CardHeader, Field, PageHeader, Screen } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { dailyDoseLimit } from "@/lib/dose-limit";
+import { reminderLimit } from "@/lib/dose-limit";
 import { isTime } from "@/lib/format";
 import { saveMedicine } from "@/lib/records";
 import { syncReminders } from "@/lib/reminders";
@@ -17,7 +17,7 @@ export default function NewMedicine() {
   const [times, setTimes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const limit = dailyDoseLimit(instructions);
+  const limit = reminderLimit(`${instructions} ${frequency}`);
 
   const save = async () => {
     if (!actor) return;
@@ -62,7 +62,13 @@ export default function NewMedicine() {
           placeholder="08:00, 20:00"
           autoCapitalize="none"
           optional
-          hint={limit ? `The label allows up to ${limit} a day. More times than that are refused.` : "Use 24-hour time, separated by commas."}
+          hint={
+            limit.count !== null && limit.asNeeded
+              ? `Taken only when needed, so up to ${limit.count === 1 ? "1 time" : `${limit.count} times`} can be saved.`
+              : limit.count !== null
+                ? `The label allows up to ${limit.count} a day. More times than that are refused.`
+                : "Use 24-hour time, separated by commas."
+          }
         />
       </Card>
       <Callout tone="brand" icon={FileText} title="Your label stays as written">

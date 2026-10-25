@@ -1,21 +1,13 @@
-import { execFile } from "node:child_process";
+/**
+ * Google Cloud Translation (the official API), used when GOOGLE_TRANSLATE_API_KEY is set.
+ * The key is sent in a header, never in the URL. Returns null when no key is set or the request fails,
+ * so the caller can try the next option. The free, unofficial translate endpoint is not used.
+ */
+const ENDPOINT = "https://translation.googleapis.com/language/translate/v2";
+const MAX_STRINGS = 100;
+const MAX_CHARS = 25_000;
 
-const memory = new Map<string, string>();
-const MAX = 2000;
-
-function matchCase(source: string, translated: string) {
-  const first = source.trim()[0];
-  if (!first || first !== first.toUpperCase() || !translated) return translated;
-  return translated[0].toUpperCase() + translated.slice(1);
-}
-
-function remember(source: string, translated: string) {
-  if (memory.size > MAX) memory.clear();
-  memory.set(source, translated);
-  memory.set(translated, translated);
-}
-
-function decode(value: string) {
+function decode(value: string): string {
   return value
     .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
     .replace(/&quot;/g, "\"")
@@ -25,61 +17,60 @@ function decode(value: string) {
     .replace(/&gt;/g, ">");
 }
 
-function segments(payload: unknown): string {
-  if (!Array.isArray(payload) || !Array.isArray(payload[0])) return "";
-  return decode(payload[0].map((part) => (Array.isArray(part) ? String(part[0] ?? "") : "")).join(""));
+function chunks(texts: string[]): string[][] {
+  const out: string[][] = [];
+  let current: string[] = [];
+  let size = 0;
+  for (const text of texts) {
+    if (current.length && (current.length >= MAX_STRINGS || size + text.length > MAX_CHARS)) {
+      out.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(text);
+    size += text.length;
+  }
+  if (current.length) out.push(current);
+  return out;
 }
 
-function curl(url: string): Promise<string> {
-  const bin = process.platform === "win32" ? "curl.exe" : "curl";
-  return new Promise((resolve, reject) => {
-    execFile(bin, ["-sS", "--max-time", "12", "-A", "Mozilla/5.0", url], { timeout: 15000, maxBuffer: 1_000_000, windowsHide: true }, (error, stdout) => {
-      if (error) reject(error);
-      else resolve(stdout);
-    });
-  });
+export function googleTranslateConfigured(): boolean {
+  return Boolean(process.env.GOOGLE_TRANSLATE_API_KEY?.trim());
 }
 
-async function googleOne(text: string): Promise<string | null> {
-  const key = process.env.GOOGLE_TRANSLATE_API_KEY;
-  if (key) {
-    try {
-      const response = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(key)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: text, target: "es", format: "text" }),
-      });
-      if (response.ok) {
-        const data = (await response.json()) as { data?: { translations?: Array<{ translatedText?: string }> } };
-        const next = data.data?.translations?.[0]?.translatedText;
-        if (next) return next;
+export async function googleTranslate(texts: string[], target = "es"): Promise<Array<string | null> | null> {
+  const key = process.env.GOOGLE_TRANSLATE_API_KEY?.trim();
+  if (!key || !texts.length) return null;
+  const results: Array<string | null> = [];
+  let failed = false;
+  let any = false;
+  for (const batch of chunks(texts)) {
+    if (!failed) {
+      try {
+        const response = await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key },
+          body: JSON.stringify({ q: batch, source: "en", target, format: "text" }),
+          signal: AbortSignal.timeout(15_000),
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const data = (await response.json()) as { data?: { translations?: Array<{ translatedText?: string }> } };
+          const list = data.data?.translations ?? [];
+          for (let index = 0; index < batch.length; index += 1) {
+            const next = list[index]?.translatedText;
+            results.push(next ? decode(next) : null);
+            any = any || Boolean(next);
+          }
+          continue;
+        }
+        console.error(`[i18n] Google Cloud Translation returned ${response.status}.`);
+      } catch {
+        console.error("[i18n] Google Cloud Translation could not be reached.");
       }
-    } catch {
-      // The public endpoint below is the fallback when the Cloud key is missing or rejected.
+      failed = true;
     }
+    for (let index = 0; index < batch.length; index += 1) results.push(null);
   }
-
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURIComponent(text)}`;
-  try {
-    const body = (await curl(url)).trim();
-    if (!body.startsWith("[")) return null;
-    return segments(JSON.parse(body)) || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function translateToSpanish(texts: string[]): Promise<Array<string | null>> {
-  const missing = [...new Set(texts)].filter((text) => text.trim() && !memory.has(text));
-  const queue = missing.slice();
-  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
-    for (;;) {
-      const text = queue.shift();
-      if (!text) return;
-      const next = await googleOne(text);
-      if (next) remember(text, matchCase(text, next));
-    }
-  });
-  await Promise.all(workers);
-  return texts.map((text) => memory.get(text) ?? null);
+  return any ? results : null;
 }

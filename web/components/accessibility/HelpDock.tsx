@@ -391,7 +391,7 @@ export function HelpDock({
           {showTour ? (
             <button
               type="button"
-              className="dock-button grid size-12 place-items-center rounded-2xl bg-brand-950 text-white hover:bg-brand-800"
+              className="dock-button grid size-11 place-items-center rounded-2xl bg-brand-950 text-white hover:bg-brand-800 sm:size-12"
               aria-label="How to use Senior Guardian"
               onClick={openTour}
             >
@@ -400,7 +400,7 @@ export function HelpDock({
           ) : null}
           <button
             type="button"
-            className="dock-button grid size-12 place-items-center rounded-2xl bg-brand-950 text-white hover:bg-brand-800"
+            className="dock-button grid size-11 place-items-center rounded-2xl bg-brand-950 text-white hover:bg-brand-800 sm:size-12"
             aria-label="Accessibility options"
             aria-expanded={panel}
             aria-controls={panel ? panelId : undefined}

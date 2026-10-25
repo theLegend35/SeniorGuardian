@@ -351,7 +351,7 @@ export default async function HomePage() {
       </main>
 
       <footer className="bg-brand-950 text-white">
-        <div className="mx-auto max-w-7xl px-5 pt-16 pb-10 sm:px-8">
+        <div className="mx-auto max-w-7xl px-5 pt-16 pb-28 sm:px-8">
           <div className="grid gap-12 lg:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
             <div>
               <Logo inverse />

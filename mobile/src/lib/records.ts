@@ -1,5 +1,5 @@
-import { reminderBlockReason } from "@/lib/dose-limit";
-import { ageFrom, isTime, localDate, parseWhen } from "@/lib/format";
+import { isDoseDay, reminderBlockReason } from "@/lib/dose-limit";
+import { ageFrom, formatTime, isTime, localDate, parseWhen, startOfLocalDay } from "@/lib/format";
 import { supabase, supabaseReady, webUrl } from "@/lib/supabase";
 import type {
   Access,
@@ -68,6 +68,8 @@ function medicineFrom(row: Row): Medicine {
     reminderEnabled: Boolean(row.reminder_enabled),
     prescribingProvider: text(row, "prescribing_provider"),
     notes: text(row, "notes"),
+    startDate: text(row, "start_date").slice(0, 10) || (row.created_at ? localDate(new Date(text(row, "created_at"))) : ""),
+    endDate: text(row, "end_date").slice(0, 10),
   };
 }
 
@@ -132,12 +134,27 @@ export async function loadActor(profileId: string): Promise<Actor | null> {
   };
 }
 
-async function namesFor(patientIds: string[]): Promise<Map<string, { name: string; detail: string }>> {
+async function namesFor(patientIds: string[], withConditions: boolean): Promise<Map<string, { name: string; detail: string }>> {
   const map = new Map<string, { name: string; detail: string }>();
   if (!patientIds.length) return map;
-  const patients = await supabase.from("patients").select("id, profile_id, date_of_birth, conditions").in("id", patientIds);
+  if (!withConditions) {
+    // A caregiver sees a name and age. Conditions are not a section a patient shares.
+    const people = await supabase.rpc("care_people", { patient_ids: patientIds });
+    if (!people.error) {
+      for (const row of (people.data ?? []) as Row[]) {
+        const age = ageFrom(text(row, "date_of_birth"));
+        map.set(text(row, "patient_id"), { name: text(row, "full_name") || "Patient", detail: age !== null ? `${age} years old` : "" });
+      }
+      return map;
+    }
+    // A database without care_people() yet: read the same row as before, minus conditions.
+  }
+  const patients = await supabase
+    .from("patients")
+    .select(withConditions ? "id, profile_id, date_of_birth, conditions" : "id, profile_id, date_of_birth")
+    .in("id", patientIds);
   raise(patients.error, "The people list could not be opened.");
-  const rows = (patients.data ?? []) as Row[];
+  const rows = (patients.data ?? []) as unknown as Row[];
   const profileIds = rows.map((row) => text(row, "profile_id")).filter(Boolean);
   const profiles = profileIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", profileIds)
@@ -146,7 +163,7 @@ async function namesFor(patientIds: string[]): Promise<Map<string, { name: strin
   const profileName = new Map(((profiles.data ?? []) as Row[]).map((row) => [text(row, "id"), text(row, "full_name")]));
   for (const row of rows) {
     const age = ageFrom(text(row, "date_of_birth"));
-    const conditions = text(row, "conditions");
+    const conditions = withConditions ? text(row, "conditions") : "";
     map.set(text(row, "id"), {
       name: profileName.get(text(row, "profile_id")) || "Patient",
       detail: [age !== null ? `${age} years old` : "", conditions].filter(Boolean).join(" · "),
@@ -161,7 +178,7 @@ export async function listPeople(actor: Actor): Promise<PersonCard[]> {
     const links = await supabase.from("patient_doctors").select("patient_id").eq("doctor_id", actor.doctorId).eq("status", "active");
     raise(links.error, "Patients could not be loaded.");
     const ids = ((links.data ?? []) as Row[]).map((row) => text(row, "patient_id"));
-    const names = await namesFor(ids);
+    const names = await namesFor(ids, true);
     return ids.map((patientId) => ({
       patientId,
       name: names.get(patientId)?.name ?? "Patient",
@@ -177,7 +194,7 @@ export async function listPeople(actor: Actor): Promise<PersonCard[]> {
       .eq("status", "active");
     raise(grants.error, "People could not be loaded.");
     const rows = (grants.data ?? []) as Row[];
-    const names = await namesFor(rows.map((row) => text(row, "patient_id")));
+    const names = await namesFor(rows.map((row) => text(row, "patient_id")), false);
     return rows.map((row) => {
       const patientId = text(row, "patient_id");
       return {
@@ -212,6 +229,7 @@ export async function todayDoses(patientId: string): Promise<Dose[]> {
   raise(events.error, "Today's doses could not be loaded.");
   const taken = new Set(((events.data ?? []) as Row[]).map((row) => `${text(row, "medication_id")}|${text(row, "scheduled_for")}`));
   return medicines
+    .filter((medicine) => isDoseDay(medicine, day))
     .flatMap((medicine) =>
       medicine.times.map((time) => {
         const scheduledFor = `${day}T${time}`;
@@ -221,10 +239,27 @@ export async function todayDoses(patientId: string): Promise<Dose[]> {
     .sort((a, b) => a.time.localeCompare(b.time));
 }
 
+/** A dose can be marked taken from an hour before its time, the same rule as the website. */
+export const MARK_EARLY_MINUTES = 60;
+
+/** Whether the dose at this local time (YYYY-MM-DDTHH:MM, the phone's own day) can be marked taken now. */
+export function canMarkTaken(scheduledFor: string, now = Date.now()): boolean {
+  const due = new Date(scheduledFor).getTime();
+  return Number.isNaN(due) || now >= due - MARK_EARLY_MINUTES * 60_000;
+}
+
+/** The clock time from which a dose at `time` can be marked taken, such as "7:00 PM" for an 8:00 PM dose. */
+export function markOpensTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  const total = (((hours * 60 + minutes - MARK_EARLY_MINUTES) % 1440) + 1440) % 1440;
+  return formatTime(`${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`);
+}
+
 export async function markTaken(actor: Actor, medicine: Medicine, time: string): Promise<void> {
   ensureReady();
   if (!isTime(time)) throw new Error("Choose a reminder time.");
   const scheduledFor = `${localDate()}T${time}`;
+  if (!canMarkTaken(scheduledFor)) throw new Error(`The ${formatTime(time)} dose is not due yet. It can be marked taken from ${markOpensTime(time)}.`);
   const existing = await supabase.from("medication_events").select("id").eq("medication_id", medicine.id).eq("kind", "taken").eq("scheduled_for", scheduledFor).limit(1);
   raise(existing.error, "That dose could not be updated.");
   if (existing.data && existing.data.length > 0) return;
@@ -247,6 +282,24 @@ export async function markTaken(actor: Actor, medicine: Medicine, time: string):
     ref_id: medicine.id,
   });
   raise(timeline.error, "That dose could not be saved.");
+}
+
+/** Removes today's taken mark for this dose time, for a mistaken tap. */
+export async function undoTaken(_actor: Actor, medicine: Medicine, time: string): Promise<void> {
+  ensureReady();
+  if (!isTime(time)) throw new Error("Choose a reminder time.");
+  const scheduledFor = `${localDate()}T${time}`;
+  const removed = await supabase
+    .from("medication_events")
+    .delete()
+    .eq("medication_id", medicine.id)
+    .eq("kind", "taken")
+    .eq("scheduled_for", scheduledFor)
+    .select("id");
+  if (removed.error?.code === "42501") throw new Error("Undo needs the latest database update on the server.");
+  raise(removed.error, "That dose could not be changed back.");
+  if (!removed.data?.length) throw new Error("That dose is not marked taken today, so there is nothing to undo.");
+  // The database adds the "Taken mark removed" timeline entry.
 }
 
 export async function addReminderTime(actor: Actor, medicine: Medicine, time: string): Promise<void> {
@@ -563,7 +616,7 @@ export async function listDocuments(patientId: string): Promise<DocumentRow[]> {
 }
 
 export async function loadPerson(patientId: string, access: Access, includeHealth: boolean): Promise<PersonBundle> {
-  const names = await namesFor([patientId]);
+  const names = await namesFor([patientId], includeHealth);
   const info = names.get(patientId);
   const [doses, medicines, visits, concerns, timeline, device, documents, health] = await Promise.all([
     access.medications || access.reminders ? todayDoses(patientId) : Promise.resolve([]),
@@ -608,9 +661,15 @@ export async function addDoctorNote(actor: Actor, patientId: string, body: strin
   raise(timeline.error, "The note could not be saved.");
 }
 
+/** Today's alerts only, so reminders from earlier days do not pile up on the bell or the Alerts screen. */
 export async function listNotices(): Promise<Notice[]> {
   ensureReady();
-  const result = await supabase.from("notifications").select("id, title, body, href, read, created_at").order("created_at", { ascending: false }).limit(50);
+  const result = await supabase
+    .from("notifications")
+    .select("id, title, body, href, read, created_at")
+    .gte("created_at", startOfLocalDay().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(50);
   raise(result.error, "Alerts could not be loaded.");
   return ((result.data ?? []) as Row[]).map((row) => ({
     id: text(row, "id"),

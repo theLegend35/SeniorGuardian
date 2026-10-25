@@ -11,6 +11,7 @@ import {
   MapPin,
   NotebookPen,
   Pill,
+  RotateCcw,
   Sparkles,
   Stethoscope,
   type LucideIcon,
@@ -18,9 +19,10 @@ import {
 
 import { InlineAction } from "@/components/ui/InlineAction";
 import { AiBlock, Badge, Callout, DateTile, SourceBlock, URGENCY, UrgencyBadge, cx } from "@/components/ui/primitives";
-import { markTakenAction } from "@/lib/actions/health";
+import { markTakenAction, undoTakenAction } from "@/lib/actions/health";
 import { normalizeAnalysis } from "@/lib/ai/vision";
 import type { TodayDose } from "@/lib/data/types";
+import { canMarkTaken, markOpensTime } from "@/lib/medications/doses";
 import { appWallTime, dayParts, formatTime, formatWhen, relativeDay, timeAgo } from "@/lib/time";
 import type { Appointment, HealthConcern, TimelineEvent, TimelineKind } from "@/types/domain";
 
@@ -48,6 +50,8 @@ export function DoseProgress({ doses }: { doses: TodayDose[] }) {
 
 export function DoseRow({ dose, canMark, detailHref }: { dose: TodayDose; canMark: boolean; detailHref?: string }) {
   const due = !dose.taken && appWallTime(dose.scheduledFor).getTime() <= Date.now();
+  // A dose can be marked from an hour before its time, so a later dose is not marked by mistake.
+  const markable = canMark && canMarkTaken(dose.scheduledFor);
   return (
     <li className={cx("flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3", dose.taken ? "border-line bg-canvas/70" : due ? "border-apricot-100 bg-apricot-50/60" : "border-line bg-white")}>
       <span
@@ -71,14 +75,23 @@ export function DoseRow({ dose, canMark, detailHref }: { dose: TodayDose; canMar
         </p>
         <p translate="no" className="line-clamp-1 text-[0.9rem] text-ink-500">{dose.medication.instructions}</p>
         {dose.taken ? null : (
-          <p className={cx("text-[0.82rem] font-semibold", due ? "text-apricot-700" : "text-ink-400")}>{due ? "Due now" : "Later today"}</p>
+          <p className={cx("text-[0.82rem] font-semibold", due ? "text-apricot-700" : "text-ink-400")}>
+            {due ? "Due now" : canMark && !markable ? `Later today · can be marked from ${markOpensTime(dose.time)}` : "Later today"}
+          </p>
         )}
       </div>
       {dose.taken ? (
-        <Badge tone="success" icon={Check}>
-          Taken
-        </Badge>
-      ) : canMark ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="success" icon={Check}>
+            Taken
+          </Badge>
+          {canMark ? (
+            <InlineAction action={undoTakenAction} fields={{ medicationId: dose.medication.id, time: dose.time }} variant="ghost" pending="Undoing…" showNotice={false}>
+              <RotateCcw className="size-4" aria-hidden /> Undo<span className="sr-only">: {dose.medication.name} at {formatTime(dose.time)} was not taken</span>
+            </InlineAction>
+          ) : null}
+        </div>
+      ) : markable ? (
         <InlineAction action={markTakenAction} fields={{ medicationId: dose.medication.id, time: dose.time }} variant={due ? "primary" : "secondary"} pending="Saving…" showNotice={false}>
           <Check className="size-4" aria-hidden /> Mark taken<span className="sr-only">: {dose.medication.name} at {formatTime(dose.time)}</span>
         </InlineAction>

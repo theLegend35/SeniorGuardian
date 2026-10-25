@@ -13,9 +13,16 @@ import { analyzeConcernLocal, normalizeAnalysis } from "@/lib/ai/vision";
 import { AccessError } from "@/lib/auth/access";
 import { FileHealthStore } from "@/lib/demo/store";
 import { DEMO_PASSWORD, IDS } from "@/lib/demo/ids";
+import { canMarkTaken, earlyMarkReason } from "@/lib/medications/doses";
 import { dailyDoseLimit } from "@/lib/medications/schedule";
+import { atTime, localDate } from "@/lib/time";
 import type { PatientContext } from "@/lib/ai/types";
 import type { Actor } from "@/types/domain";
+
+/** The current Central time as HH:MM, so a dose marked in a test is never "not due yet". */
+function clockNow(): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+}
 
 async function setup() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sha-"));
@@ -107,7 +114,7 @@ test("patient, doctor, and caregiver permissions stay separate", async () => {
   assert.equal(hidden.concerns, null);
   assert.ok(hidden.medications && hidden.medications.length > 0);
 
-  await store.markTaken(helenAgain, twice.id, "20:00");
+  await store.markTaken(helenAgain, twice.id, clockNow());
   const logged = await store.getMedication(eleanor, twice.id);
   assert.ok(logged.events.some((event) => event.kind === "taken" && event.note.includes("Helen Walsh")));
 
@@ -216,7 +223,7 @@ test("medication and appointment changes belong to the patient record", async ()
     notes: "Fictional",
     reminderEnabled: true,
   });
-  await store.markTaken(eleanor, created.id, "09:00");
+  await store.markTaken(eleanor, created.id, clockNow());
   await store.archiveMedication(eleanor, created.id);
   const chart = await store.getChart(hale, IDS.eleanorPatient);
   assert.ok(chart.timeline?.some((event) => event.refId === created.id));
@@ -384,4 +391,42 @@ test("care chat stays inside the authorized trio and a clinician visit does not 
 test("unauthorized actor type stays narrow", () => {
   const stranger = { role: "doctor", doctorId: "nope", patientId: null } as Actor;
   assert.equal(stranger.role, "doctor");
+});
+
+test("a dose can be marked from an hour before its time, and a mistaken mark can be undone", async () => {
+  const at = (iso: string) => Date.parse(iso);
+  // 8:00 PM Central on Oct 21, 2026 is 01:00 UTC on Oct 22.
+  assert.equal(canMarkTaken("2026-10-21T20:00", at("2026-10-22T00:05:00Z")), true);
+  assert.equal(canMarkTaken("2026-10-21T20:00", at("2026-10-21T23:55:00Z")), false);
+  assert.match(earlyMarkReason("2026-10-21T20:00", "20:00", at("2026-10-21T14:00:00Z")) ?? "", /8:00 PM dose is not due yet\. It can be marked taken from 7:00 PM/);
+
+  const { store, eleanor } = await setup();
+  const created = await store.saveMedication(eleanor, {
+    name: "Vitamin C 500 mg",
+    instructions: "Take one tablet by mouth once a day.",
+    frequency: "Once a day",
+    times: ["09:00"],
+    startDate: "2026-10-01",
+    endDate: null,
+    prescribingProvider: "Dr. Marcus Hale",
+    notes: "Fictional",
+    reminderEnabled: true,
+  });
+  const time = clockNow();
+  await store.markTaken(eleanor, created.id, time);
+  const scheduledFor = atTime(localDate(), time);
+  assert.ok((await store.getMedication(eleanor, created.id)).events.some((event) => event.kind === "taken" && event.scheduledFor === scheduledFor));
+
+  await store.undoTaken(eleanor, created.id, time);
+  const after = await store.getMedication(eleanor, created.id);
+  assert.equal(after.events.some((event) => event.kind === "taken" && event.scheduledFor === scheduledFor), false);
+  const chart = await store.getChart(eleanor, eleanor.patientId!);
+  assert.ok(chart.timeline?.some((event) => event.title === "Taken mark removed: Vitamin C 500 mg"));
+  await assert.rejects(() => store.undoTaken(eleanor, created.id, time), /nothing to undo/);
+
+  // Late in the evening there is no clock time more than an hour ahead on the same day.
+  const [hours, minutes] = time.split(":").map(Number);
+  if (hours * 60 + minutes < 22 * 60 + 50) {
+    await assert.rejects(() => store.markTaken(eleanor, created.id, "23:59"), /not due yet/);
+  }
 });

@@ -203,6 +203,8 @@ export interface HealthStore {
   saveMedication(actor: Actor, input: MedicationInput, id?: string): Promise<Medication>;
   archiveMedication(actor: Actor, id: string): Promise<void>;
   markTaken(actor: Actor, medicationId: string, time: string): Promise<void>;
+  /** Removes today's taken mark for this dose time, for a mistaken tap. */
+  undoTaken(actor: Actor, medicationId: string, time: string): Promise<void>;
   setReminder(actor: Actor, medicationId: string, time: string): Promise<void>;
   getAppointment(actor: Actor, id: string): Promise<Appointment>;
   saveAppointment(actor: Actor, input: AppointmentInput, id?: string): Promise<Appointment>;
@@ -248,7 +250,14 @@ export interface HealthStore {
   getDeviceBoard(actor: Actor, patientId: string): Promise<DeviceBoard>;
   connectDevice(actor: Actor, input: { provider: DeviceProvider; label: string }): Promise<DeviceConnection>;
   saveReadingRange(actor: Actor, input: { metric: DeviceMetric; low: number; high: number }): Promise<void>;
-  recordDeviceReading(actor: Actor, input: { connectionId: string; metric: DeviceMetric; value: number; recordedAt: string }): Promise<DeviceReading>;
+  /**
+   * Saves a device number. With `day`, a second number for the same device, metric, and day updates the saved one
+   * instead of adding a copy, and a notice for it is sent at most once. `partialDay` marks a day that is not over.
+   */
+  recordDeviceReading(
+    actor: Actor,
+    input: { connectionId: string; metric: DeviceMetric; value: number; recordedAt: string; day?: string | null; partialDay?: boolean },
+  ): Promise<DeviceReading & { alerted: boolean }>;
   linkDeviceAccount(actor: Actor, connectionId: string, secret: DeviceSecret): Promise<void>;
   readDeviceSecret(actor: Actor, connectionId: string): Promise<DeviceSecret | null>;
   resetDemo(): Promise<void>;

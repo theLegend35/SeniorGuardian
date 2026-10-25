@@ -33,7 +33,7 @@ export function AuthShell({ title, description, children }: { title: string; des
           Informational only. Senior Guardian does not replace doctors, nurses, pharmacists, or emergency services. In an emergency, call 911.
         </p>
       </aside>
-      <main className="flex flex-col px-5 py-8 sm:px-10">
+      <main className="flex flex-col px-5 pt-8 pb-28 sm:px-10">
         <div className="lg:hidden">
           <Logo />
         </div>

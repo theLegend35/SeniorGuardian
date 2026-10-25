@@ -3,6 +3,7 @@ import { PortalShell } from "@/components/navigation/PortalShell";
 import { requireRole } from "@/lib/auth/session";
 import { getStore } from "@/lib/data/index";
 import { isUnreadChatNotice } from "@/lib/notifications/chat";
+import { todaysAlerts } from "@/lib/notifications/today";
 import type { Role } from "@/types/domain";
 
 const DETAIL: Record<Role, string> = { patient: "Patient", doctor: "Clinician", caregiver: "Caregiver" };
@@ -15,7 +16,7 @@ export async function RoleLayout({ role, children }: { role: Role; children: Rea
       role={role}
       name={actor.fullName}
       detail={DETAIL[role]}
-      unread={notes.filter((note) => !note.read).length}
+      unread={todaysAlerts(notes).filter((note) => !note.read).length}
       chatUnread={notes.filter(isUnreadChatNotice).length}
     >
       {role === "doctor" ? null : <AlarmMonitor />}

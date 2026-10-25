@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import { saveAiChoice } from "@/lib/ai/settings";
 import { actionError, type ActionState } from "@/lib/actions/state";
 import { requireActor } from "@/lib/auth/session";
+import { isSampleEmail, SAMPLE_LOCKED } from "@/lib/demo/ids";
 
 export async function updateAiSettingsAction(_state: ActionState, formData: FormData): Promise<ActionState> {
   try {
     const actor = await requireActor();
+    if (isSampleEmail(actor.email)) return { error: SAMPLE_LOCKED };
     await saveAiChoice(actor.profileId, {
       provider: String(formData.get("provider") ?? ""),
       ours: String(formData.get("ours") ?? "gemini"),

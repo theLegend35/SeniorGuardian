@@ -5,20 +5,17 @@ import { AppState, Linking, View } from "react-native";
 import { ReadingGrid } from "@/components/records";
 import { AppText, Badge, Button, Callout, Card, CardHeader, Divider, EmptyState, ErrorNote, Field, IconTile, Loading, PageHeader, Screen, Segmented, useAsync } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { timeAgo } from "@/lib/format";
+import { localDate, timeAgo } from "@/lib/format";
 import { listReadings, saveReadingRange } from "@/lib/records";
 import { colors } from "@/lib/theme";
 import { startDeviceSignIn, syncDevice } from "@/lib/web-api";
 
 const WORN_WINDOW_MS = 3 * 60 * 60 * 1000;
 
-const EXAMPLE_OURA_ID = "c000979e-2bb5-4840-936e-b02e65e2c6df";
-
-function devicePresence(lastReadingAt: string | null, stayOn = false) {
+function devicePresence(lastReadingAt: string | null) {
   if (!lastReadingAt) return { on: false, label: "Offline", detail: "No number has arrived from this device." };
   const age = Date.now() - new Date(lastReadingAt).getTime();
   const when = timeAgo(lastReadingAt).toLowerCase();
-  if (stayOn) return { on: true, label: "On", detail: "This example ring stays on. The latest saved numbers are showing." };
   if (age >= -60_000 && age <= WORN_WINDOW_MS) {
     return { on: true, label: "On", detail: `The latest number arrived ${when}.` };
   }
@@ -148,8 +145,10 @@ export default function Devices() {
   const known = new Set<string>(PROVIDERS.map((provider) => provider.id));
   const byProvider = new Map(connections.map((connection) => [connection.provider, connection]));
   const other = connections.filter((connection) => !known.has(connection.provider));
-  const flagged = readings.find((reading) => reading.status === "outside");
-  const outside = readings.filter((reading) => reading.status === "outside").length;
+  // Only readings from today raise the warning; older numbers stay in the list below.
+  const todayOutside = readings.filter((reading) => reading.status === "outside" && localDate(new Date(reading.recordedAt)) === localDate());
+  const flagged = todayOutside[0];
+  const outside = todayOutside.length;
   return (
     <Screen onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
@@ -159,7 +158,7 @@ export default function Devices() {
       />
       {PROVIDERS.map((provider) => {
         const connection = byProvider.get(provider.id);
-        const presence = connection ? devicePresence(connection.lastReadingAt, connection.id === EXAMPLE_OURA_ID) : null;
+        const presence = connection ? devicePresence(connection.lastReadingAt) : null;
         return (
           <Card key={provider.id}>
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -231,8 +230,8 @@ export default function Devices() {
                 <AppText size={16} weight="bold" color={colors.ink950} style={{ flex: 1 }}>
                   {connection.label}
                 </AppText>
-                <Badge tone={devicePresence(connection.lastReadingAt, connection.id === EXAMPLE_OURA_ID).on ? "success" : "apricot"}>
-                  {devicePresence(connection.lastReadingAt, connection.id === EXAMPLE_OURA_ID).label}
+                <Badge tone={devicePresence(connection.lastReadingAt).on ? "success" : "apricot"}>
+                  {devicePresence(connection.lastReadingAt).label}
                 </Badge>
               </View>
             </View>

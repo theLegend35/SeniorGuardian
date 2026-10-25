@@ -12,7 +12,9 @@ import {
   canRevisePrescription,
   canWriteOwnRecord,
   type AccessContext,
+  TIMELINE_AREA,
   ValidationError,
+  visiblePatient,
 } from "@/lib/auth/access";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSeed, DEMO_VERSION, type DemoDatabase, type DemoProfile } from "@/lib/demo/seed";
@@ -21,7 +23,8 @@ import { isMetric, isProvider, judgeReading, METRICS, parseMetricNumber } from "
 import { nextAlarmAt, selectDueAlarms, type AlarmDraft, type DeliveredAlarm, type DueAlarm } from "@/lib/alarms/due";
 import { fanOut } from "@/lib/notifications/channels";
 import { chatNoticeMatchesPatient, isUnreadChatNotice } from "@/lib/notifications/chat";
-import { reminderBlockReason, reminderCountReason } from "@/lib/medications/schedule";
+import { earlyMarkReason } from "@/lib/medications/doses";
+import { isDoseDay, reminderBlockReason, reminderCountReason } from "@/lib/medications/schedule";
 import { atTime, formatTime, localDate } from "@/lib/time";
 import type {
   Actor,
@@ -38,7 +41,6 @@ import type {
   Patient,
   Profile,
   TimelineEvent,
-  TimelineKind,
 } from "@/types/domain";
 import type {
   AppointmentInput,
@@ -104,6 +106,8 @@ function flagsOf(grant: PermissionFlags): PermissionFlags {
 
 export class FileHealthStore implements HealthStore {
   private db: DemoDatabase | null = null;
+  /** When records.txt was last read or written by this copy of the store. */
+  private loadedAt = 0;
   private queue: Promise<void> = Promise.resolve();
 
   constructor(private readonly dir: string) {}
@@ -121,8 +125,23 @@ export class FileHealthStore implements HealthStore {
     return path.join(this.dir, "records.txt");
   }
 
+  /** The file's change time, or 0 when it does not exist yet. */
+  private fileTime(): number {
+    try {
+      return fs.statSync(this.filePath()).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
   private load(): DemoDatabase {
-    if (this.db) return this.db;
+    // Next.js can run more than one copy of this store (pages and API routes are bundled apart).
+    // If another copy saved records.txt since this one read it, read it again instead of using stale data.
+    if (this.db) {
+      const changed = this.fileTime();
+      if (!changed || changed === this.loadedAt) return this.db;
+      this.db = null;
+    }
     fs.mkdirSync(this.dir, { recursive: true });
     const file = this.filePath();
     const legacy = path.join(this.dir, "db.json");
@@ -147,6 +166,7 @@ export class FileHealthStore implements HealthStore {
           if (typeof grant.viewReadings !== "boolean") grant.viewReadings = grant.id === IDS.caregiverGrant;
         }
         this.db = saved;
+        if (source === file) this.loadedAt = this.fileTime();
         const preview = createSeed().db;
         let addedRobert = false;
         if (!saved.patients.some((patient) => patient.id === IDS.robertPatient)) {
@@ -206,6 +226,7 @@ export class FileHealthStore implements HealthStore {
     if (!this.db) return;
     fs.mkdirSync(this.dir, { recursive: true });
     fs.writeFileSync(this.filePath(), `${JSON.stringify(this.db, null, 2)}\n`);
+    this.loadedAt = this.fileTime();
     const legacy = path.join(this.dir, "db.json");
     if (legacy !== this.filePath() && fs.existsSync(legacy)) fs.unlinkSync(legacy);
   }
@@ -255,7 +276,9 @@ export class FileHealthStore implements HealthStore {
     assertCan(canViewArea(actor, patientId, area, this.context(db)));
   }
 
-  private notify(db: DemoDatabase, input: Omit<AppNotification, "id" | "read" | "createdAt">): void {
+  /** Returns false when this alarm key was already sent to this person; then nothing is sent again. */
+  private notify(db: DemoDatabase, input: Omit<AppNotification, "id" | "read" | "createdAt">): boolean {
+    if (input.alarmKey && db.notifications.some((item) => item.profileId === input.profileId && item.alarmKey === input.alarmKey)) return false;
     db.notifications.push({
       ...input,
       id: crypto.randomUUID(),
@@ -263,6 +286,7 @@ export class FileHealthStore implements HealthStore {
       createdAt: new Date().toISOString(),
     });
     void fanOut(input);
+    return true;
   }
 
   private timeline(
@@ -283,18 +307,7 @@ export class FileHealthStore implements HealthStore {
   }
 
   private visibleEvent(actor: Actor, event: TimelineEvent, db: DemoDatabase): boolean {
-    const area: Record<TimelineKind, Parameters<typeof canViewArea>[2]> = {
-      concern: "concerns",
-      image: "concerns",
-      medication_change: "medications",
-      medication_activity: "medications",
-      appointment: "appointments",
-      doctor_note: "notes",
-      patient_note: "notes",
-      document: "documents",
-      ai_summary: "timeline",
-    };
-    if (!canViewArea(actor, event.patientId, area[event.kind], this.context(db))) return false;
+    if (!canViewArea(actor, event.patientId, TIMELINE_AREA[event.kind] ?? "timeline", this.context(db))) return false;
     if (actor.role === "patient" || (event.kind !== "concern" && event.kind !== "image")) return true;
     return db.healthConcerns.some((item) => item.id === event.refId && item.sharedWithCareTeam);
   }
@@ -487,11 +500,7 @@ export class FileHealthStore implements HealthStore {
       const db = this.load();
       this.know(actor, patientId, db);
       const ctx = this.context(db);
-      const fullRecord = actor.role !== "caregiver" || canViewArea(actor, patientId, "overview", ctx);
-      const source = this.patientOf(db, patientId);
-      const patient = fullRecord
-        ? source
-        : { ...source, address: "", emergencyContact: "", bloodType: "", allergies: "", conditions: "" };
+      const patient = visiblePatient(actor, patientId, this.patientOf(db, patientId), ctx);
       const profile = pub(this.profileById(db, patient.profileId));
       const see = (area: Parameters<typeof canViewArea>[2]) => canViewArea(actor, patientId, area, ctx);
       const notes = see("notes")
@@ -574,7 +583,7 @@ export class FileHealthStore implements HealthStore {
 
   private dosesOn(db: DemoDatabase, patientId: string, day: string): TodayDose[] {
     return db.medications
-      .filter((med) => med.patientId === patientId && med.status === "active")
+      .filter((med) => med.patientId === patientId && med.status === "active" && isDoseDay(med, day))
       .flatMap((medication) =>
         medication.times.map((time) => {
           const scheduledFor = atTime(day, time);
@@ -759,6 +768,8 @@ export class FileHealthStore implements HealthStore {
       const [cleanTime] = cleanTimes([time]);
       if (!cleanTime) throw new ValidationError("Choose a reminder time.");
       const scheduledFor = atTime(localDate(), cleanTime);
+      const early = earlyMarkReason(scheduledFor, cleanTime);
+      if (early) throw new ValidationError(early);
       if (db.medicationEvents.some((event) => event.medicationId === medicationId && event.kind === "taken" && event.scheduledFor === scheduledFor)) {
         return;
       }
@@ -778,6 +789,34 @@ export class FileHealthStore implements HealthStore {
         title: `Taken: ${medication.name}`,
         summary: `Marked taken for ${formatTime(cleanTime)}. Instructions remain: ${medication.instructions}`,
         sourceLabel: own ? "Recorded by the patient" : `Recorded by ${actor.fullName}, caregiver`,
+        refTable: "medications",
+        refId: medication.id,
+      });
+      this.persist();
+    });
+  }
+
+  async undoTaken(actor: Actor, medicationId: string, time: string): Promise<void> {
+    return this.enqueue(() => {
+      const db = this.load();
+      const medication = db.medications.find((item) => item.id === medicationId);
+      if (!medication) throw new AccessError("That medication was not found.");
+      const own = canWriteOwnRecord(actor, medication.patientId);
+      assertCan(own || canManageReminders(actor, medication.patientId, this.context(db)));
+      const [cleanTime] = cleanTimes([time]);
+      if (!cleanTime) throw new ValidationError("Choose a reminder time.");
+      const scheduledFor = atTime(localDate(), cleanTime);
+      const before = db.medicationEvents.length;
+      db.medicationEvents = db.medicationEvents.filter(
+        (event) => !(event.medicationId === medicationId && event.kind === "taken" && event.scheduledFor === scheduledFor),
+      );
+      if (db.medicationEvents.length === before) throw new ValidationError("That dose is not marked taken today, so there is nothing to undo.");
+      this.timeline(db, {
+        patientId: medication.patientId,
+        kind: "medication_activity",
+        title: `Taken mark removed: ${medication.name}`,
+        summary: `The ${formatTime(cleanTime)} dose is back to not taken. Instructions remain: ${medication.instructions}`,
+        sourceLabel: own ? "Changed by the patient" : `Changed by ${actor.fullName}, caregiver`,
         refTable: "medications",
         refId: medication.id,
       });
@@ -1211,6 +1250,11 @@ export class FileHealthStore implements HealthStore {
       const file = db.files.find((item) => item.id === fileId);
       if (!file) throw new AccessError("That file was not found.");
       assertCan(canReadFile(actor, file.patientId, file.bucket, this.context(db)));
+      if (file.bucket === "concerns" && actor.role !== "patient") {
+        // A concern photo goes to the care team only with a concern the patient shared.
+        const shared = db.healthConcerns.some((item) => item.imageFileId === file.id && item.sharedWithCareTeam);
+        assertCan(shared, "This photo has not been shared with the care team.");
+      }
       const full = path.join(this.dir, "files", file.id);
       if (!fs.existsSync(full)) throw new ValidationError("This file is no longer available.");
       return { mimeType: file.mimeType, fileName: file.fileName, data: fs.readFileSync(full) };
@@ -1651,8 +1695,8 @@ export class FileHealthStore implements HealthStore {
 
   async recordDeviceReading(
     actor: Actor,
-    input: { connectionId: string; metric: DeviceReading["metric"]; value: number; recordedAt: string },
-  ): Promise<DeviceReading> {
+    input: { connectionId: string; metric: DeviceReading["metric"]; value: number; recordedAt: string; day?: string | null; partialDay?: boolean },
+  ): Promise<DeviceReading & { alerted: boolean }> {
     return this.enqueue(() => {
       const db = this.load();
       if (!actor.patientId || !canWriteOwnRecord(actor, actor.patientId)) throw new AccessError();
@@ -1664,33 +1708,48 @@ export class FileHealthStore implements HealthStore {
       if (Number.isNaN(recordedAt.getTime()) || recordedAt.getTime() > Date.now() + 5 * 60_000) {
         throw new ValidationError("Use a time that has already happened.");
       }
+      const day = input.day && /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : null;
       const range = db.readingRanges.find((item) => item.patientId === actor.patientId && item.metric === input.metric) ?? null;
-      const judged = judgeReading(input.metric, value, range, connection.label);
-      const reading: DeviceReading = {
-        id: crypto.randomUUID(),
-        patientId: actor.patientId,
-        connectionId: connection.id,
-        metric: input.metric,
-        value,
-        unit: METRICS[input.metric].unit,
-        recordedAt: recordedAt.toISOString(),
-        status: judged.status,
-      };
-      db.deviceReadings.push(reading);
-      if (judged.status === "outside") {
+      const judged = judgeReading(input.metric, value, range, connection.label, { partialDay: input.partialDay });
+      // One reading per device, metric, and day: a second sync of the same day's number updates it.
+      const existing = day ? db.deviceReadings.find((item) => item.connectionId === connection.id && item.metric === input.metric && item.measuredOn === day) : undefined;
+      let reading: DeviceReading;
+      if (existing) {
+        existing.value = value;
+        existing.status = judged.status;
+        existing.recordedAt = recordedAt.toISOString();
+        reading = { ...existing };
+      } else {
+        reading = {
+          id: crypto.randomUUID(),
+          patientId: actor.patientId,
+          connectionId: connection.id,
+          metric: input.metric,
+          value,
+          unit: METRICS[input.metric].unit,
+          recordedAt: recordedAt.toISOString(),
+          status: judged.status,
+          ...(day ? { measuredOn: day } : {}),
+        };
+        db.deviceReadings.push(reading);
+      }
+      let alerted = false;
+      if (judged.status === "outside" && judged.alert) {
+        const alarmKey = day ? `reading:${connection.id}:${input.metric}:${day}` : `reading:${reading.id}`;
         for (const person of this.readingAudience(db, actor.patientId)) {
-          this.notify(db, {
+          const sent = this.notify(db, {
             profileId: person.profileId,
             kind: "app",
             title: judged.title,
             body: judged.body,
             href: person.href,
-            alarmKey: `reading:${reading.id}`,
+            alarmKey,
           });
+          alerted = alerted || sent;
         }
       }
       this.persist();
-      return reading;
+      return { ...reading, alerted };
     });
   }
 

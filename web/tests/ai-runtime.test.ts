@@ -128,6 +128,58 @@ test("a personal model limit does not switch to Groq", async () => {
   });
 });
 
+test("one person's own Groq key limit does not pause the shared Groq backup", async () => {
+  await withServerKeys(async (calls) => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(url);
+      const auth = new Headers(init?.headers).get("Authorization") ?? "";
+      if (url.includes("api.groq.com") && auth.includes("gsk-personal")) return jsonResponse({ error: { message: "Please retry in 3h." } }, 429);
+      if (url.includes("api.groq.com")) return jsonResponse({ choices: [{ message: { content: "Hello Eleanor." } }] });
+      return jsonResponse({ error: { message: "Please retry in 20h46m54s." } }, 429);
+    }) as typeof fetch;
+    try {
+      const personal = runtimeFor({ provider: "groq", ours: "gemini", model: "", apiKey: "gsk-personal-groq-key" });
+      const mine = await runWithAi(personal, () => generateText([{ role: "user", content: "hello" }]));
+      assert.equal(mine, null);
+
+      calls.length = 0;
+      const shared = await runWithAi(runtimeFor(DEFAULT_SAVED), async () => {
+        const value = await generateText([{ role: "user", content: "hello" }]);
+        return { value, note: limitNote() ?? "" };
+      });
+      assert.equal(shared.value, "Hello Eleanor.");
+      assert.match(calls[calls.length - 1] ?? "", /api\.groq\.com/);
+      assert.match(shared.note, /used Groq instead/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+test("two people with their own ChatGPT keys do not share a pause", async () => {
+  await withServerKeys(async (calls) => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(input));
+      const auth = new Headers(init?.headers).get("Authorization") ?? "";
+      if (auth.includes("sk-first")) return jsonResponse({ error: { message: "Please retry in 2h." } }, 429);
+      return jsonResponse({ choices: [{ message: { content: "Hi there." } }] });
+    }) as typeof fetch;
+    try {
+      const first = runtimeFor({ provider: "chatgpt", ours: "gemini", model: "gpt-4o-mini", apiKey: "sk-first-person" });
+      const second = runtimeFor({ provider: "chatgpt", ours: "gemini", model: "gpt-4o-mini", apiKey: "sk-second-person" });
+      assert.equal(await runWithAi(first, () => generateText([{ role: "user", content: "hello" }])), null);
+      calls.length = 0;
+      assert.equal(await runWithAi(second, () => generateText([{ role: "user", content: "hello" }])), "Hi there.");
+      assert.equal(calls.length, 1);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
 test("a second question during the Gemini quiet period stays on Groq", async () => {
   await withServerKeys(async (calls) => {
     const ask = () =>

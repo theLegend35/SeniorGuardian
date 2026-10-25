@@ -1,7 +1,7 @@
 import type { DeviceBoard } from "@/lib/data/types";
 import { METRICS } from "@/lib/devices/metrics";
 import { MetricGauges } from "@/components/health/MetricGauge";
-import { devicePresence, EXAMPLE_OURA_ID } from "@/lib/devices/presence";
+import { devicePresence } from "@/lib/devices/presence";
 import { describeSeries, formatMetric, seriesFor } from "@/lib/devices/series";
 import { formatWhen } from "@/lib/time";
 import type { DeviceMetric, DeviceReading, ReadingRange } from "@/types/domain";
@@ -156,7 +156,7 @@ export function WearablePanel({ board }: { board: DeviceBoard }) {
   const connection = board.connections.find((item) => board.readings.some((reading) => reading.connectionId === item.id)) ?? board.connections[0];
   if (!connection) return <p className="mt-2 text-ink-500">No device on this record.</p>;
   const readings = board.readings.filter((reading) => reading.connectionId === connection.id);
-  const presence = devicePresence(connection.label, readings, Date.now(), connection.id === EXAMPLE_OURA_ID);
+  const presence = devicePresence(connection.label, readings);
   const heart = seriesFor(readings, "heart_rate");
   const range = board.ranges.find((item) => item.metric === "heart_rate");
   const latest = new Map<string, DeviceReading>();

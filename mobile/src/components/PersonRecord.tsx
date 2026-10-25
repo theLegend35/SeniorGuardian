@@ -7,7 +7,7 @@ import { AccessChips } from "@/components/Panels";
 import { DoseProgress, DoseRow, ReadingGrid, TimeChips, TimelineList, VisitRow } from "@/components/records";
 import { AppText, Avatar, Badge, Button, Callout, Card, CardHeader, Divider, EmptyState, ErrorNote, Field, KeyValue, Loading, Locked, SourceBlock, useAsync } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { dailyDoseLimit } from "@/lib/dose-limit";
+import { reminderLimit } from "@/lib/dose-limit";
 import { formatDate, timeAgo } from "@/lib/format";
 import { addDoctorNote, addReminderTime, loadPerson } from "@/lib/records";
 import { revisePrescription } from "@/lib/web-api";
@@ -76,7 +76,7 @@ export function ReminderAdd({ medicine, onDone }: { medicine: Medicine; onDone: 
   const [time, setTime] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const limit = dailyDoseLimit(medicine.instructions);
+  const limit = reminderLimit(`${medicine.instructions} ${medicine.frequency ?? ""}`);
 
   const add = async () => {
     if (!actor) return;
@@ -103,9 +103,11 @@ export function ReminderAdd({ medicine, onDone }: { medicine: Medicine; onDone: 
         <Button label="Add" icon={Plus} variant="soft" loading={saving} disabled={!time.trim()} onPress={() => void add()} />
       </View>
       <AppText size={13.5} color={colors.ink500}>
-        {limit
-          ? `The label allows up to ${limit} a day, so no more than ${limit} times can be saved. A reminder never changes the dose.`
-          : "Use 24-hour time, like 08:00 or 18:30. A reminder never changes the dose."}
+        {limit.count !== null && limit.asNeeded
+          ? `Taken only when needed, so no more than ${limit.count === 1 ? "1 reminder time" : `${limit.count} reminder times`} can be saved. A reminder never changes the dose.`
+          : limit.count !== null
+            ? `The label allows up to ${limit.count} a day, so no more than ${limit.count} times can be saved. A reminder never changes the dose.`
+            : "Use 24-hour time, like 08:00 or 18:30. A reminder never changes the dose."}
       </AppText>
       {error ? (
         <Callout tone="danger" title="Not saved">

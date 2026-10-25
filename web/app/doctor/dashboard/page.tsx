@@ -8,6 +8,7 @@ import { Avatar, Card, CardHeader, EmptyState, LinkButton, Stat, UrgencyBadge } 
 import { requireRole } from "@/lib/auth/session";
 import { getStore } from "@/lib/data/index";
 import { wearableQuickStats } from "@/lib/devices/quick-stats";
+import { todaysAlerts } from "@/lib/notifications/today";
 import { daysUntil, formatDate, greeting, timeAgo } from "@/lib/time";
 
 export const metadata = { title: "Dashboard" };
@@ -22,7 +23,7 @@ export default async function DoctorDashboard() {
   const attention = patients
     .filter((patient) => patient.latestConcern && (patient.latestConcern.urgency === "emergency" || patient.latestConcern.urgency === "prompt" || daysUntil(patient.latestConcern.createdAt) > -7))
     .sort((a, b) => (b.latestConcern?.createdAt ?? "").localeCompare(a.latestConcern?.createdAt ?? ""));
-  const unread = notifications.filter((item) => !item.read).length;
+  const unread = todaysAlerts(notifications).filter((item) => !item.read).length;
   const surname = actor.fullName.replace(/,.*$/, "").split(" ").at(-1);
   const boards = await Promise.all(patients.map(async (patient) => ({ patientId: patient.patientId, fullName: patient.fullName, board: await store.getDeviceBoard(actor, patient.patientId) })));
   const wearableStats = wearableQuickStats(boards);

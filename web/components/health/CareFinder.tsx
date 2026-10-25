@@ -48,8 +48,8 @@ function GoogleMapView({ apiKey, mapId, result, selected, onSelect }: { apiKey: 
           <AdvancedMarker key={place.id} position={place.location} title={place.name} onClick={() => onSelect(place.id)} zIndex={selected?.id === place.id ? 10 : 1}>
             <span
               className={cx(
-                "grid size-9 place-items-center rounded-full border-[3px] border-white font-display text-[0.9rem] font-extrabold text-white shadow-lg transition-transform",
-                selected?.id === place.id ? "scale-125 bg-apricot-500" : "bg-brand-700",
+                "grid size-9 place-items-center rounded-full border-[3px] border-white font-display text-[0.9rem] font-extrabold shadow-lg transition-transform",
+                selected?.id === place.id ? "scale-125 bg-apricot-500 text-ink-950" : "bg-brand-700 text-white",
               )}
             >
               {index + 1}
@@ -87,7 +87,7 @@ function PlaceCard({ place, index, selected, onSelect }: { place: CarePlace; ind
         aria-current={selected || undefined}
       >
         <div className="flex gap-3">
-          <span className={cx("grid size-9 flex-none place-items-center rounded-full font-display text-[0.92rem] font-extrabold text-white", selected ? "bg-apricot-500" : "bg-brand-700")}>{index + 1}</span>
+          <span className={cx("grid size-9 flex-none place-items-center rounded-full font-display text-[0.92rem] font-extrabold", selected ? "bg-apricot-500 text-ink-950" : "bg-brand-700 text-white")}>{index + 1}</span>
           <div className="min-w-0 flex-1">
             <h3 className="text-[1.08rem] leading-snug font-bold text-ink-950">{place.name}</h3>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.9rem] text-ink-600">

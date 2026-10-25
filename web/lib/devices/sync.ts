@@ -1,9 +1,16 @@
 import type { DeviceSecret } from "@/lib/data/types";
 import { parseMetricNumber } from "@/lib/devices/metrics";
 import { cloudProvider, type CloudProvider } from "@/lib/devices/catalog";
+import { localDate } from "@/lib/time";
 import type { DeviceMetric } from "@/types/domain";
 
-export type DeviceSample = { metric: DeviceMetric; value: number };
+/**
+ * One number from a vendor. `day` is the day the vendor says the number belongs to (YYYY-MM-DD, or null when the
+ * vendor gave no date). The record keeps one reading per device, metric, and day, so a second sync of the same
+ * day's number updates it instead of saving a copy. `latest` is false for the previous day's step total, which is
+ * saved so a finished day has its final count.
+ */
+export type DeviceSample = { metric: DeviceMetric; value: number; day: string | null; latest: boolean };
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
@@ -64,13 +71,66 @@ function latest<T>(items: T[], key: (item: T) => number): T | null {
   return best;
 }
 
-function push(out: DeviceSample[], seen: Set<DeviceMetric>, metric: DeviceMetric, raw: number | null) {
+/**
+ * The main sleep of the newest day: a nap on the same day must not replace the night's sleep, now that one
+ * reading is kept per day. `main` scores each period (Oura marks the night as "long_sleep"; otherwise the longest).
+ */
+function mainSleep<T>(items: T[], day: (item: T) => number, main: (item: T) => number): T | null {
+  const newest = latest(items, day);
+  if (!newest) return null;
+  const top = day(newest);
+  if (!top) return newest;
+  let best: T | null = null;
+  for (const item of items) {
+    if (day(item) !== top) continue;
+    if (!best || main(item) > main(best)) best = item;
+  }
+  return best;
+}
+
+/** The newest item on an earlier day than `newest`, by the same date key. */
+function dayBefore<T>(items: T[], key: (item: T) => number, newest: T | null): T | null {
+  if (!newest) return null;
+  const top = key(newest);
+  if (!top) return null;
+  return latest(items.filter((item) => key(item) > 0 && key(item) < top), key);
+}
+
+/** 20261021 → "2026-10-21". */
+function dayOfKey(key: number): string | null {
+  if (!key) return null;
+  const year = Math.floor(key / 10_000);
+  const month = Math.floor((key % 10_000) / 100);
+  const day = key % 100;
+  if (year < 2000 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** The app's local day (Central time) of a timestamp, given as ISO text or epoch seconds. */
+function dayOfTime(value: unknown): string | null {
+  const date = typeof value === "number" ? new Date(value * 1000) : typeof value === "string" ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return localDate(date);
+}
+
+function push(out: DeviceSample[], seen: Set<DeviceMetric>, metric: DeviceMetric, raw: number | null, day: string | null) {
   if (raw == null || seen.has(metric)) return;
   try {
-    out.push({ metric, value: parseMetricNumber(metric, raw) });
+    out.push({ metric, value: parseMetricNumber(metric, raw), day, latest: true });
     seen.add(metric);
   } catch {
     // A vendor value outside the metric bounds is skipped, not stored.
+  }
+}
+
+/** The previous day's step total, so that day keeps its final count after midnight. */
+function pushEarlierSteps(out: DeviceSample[], raw: number | null, day: string | null) {
+  const newest = out.find((item) => item.metric === "steps");
+  if (raw == null || !day || !newest || newest.day === day) return;
+  try {
+    out.push({ metric: "steps", value: parseMetricNumber("steps", raw), day, latest: false });
+  } catch {
+    // Skipped, like any value outside the metric bounds.
   }
 }
 
@@ -256,34 +316,51 @@ export function readingsFromVendor(provider: CloudProvider, snapshot: VendorSnap
 }
 
 function readGoogle(snapshot: VendorSnapshot, out: DeviceSample[], seen: Set<DeviceMetric>) {
-  const heart = latest(asArray(asRecord(snapshot.heart)?.dataPoints), (item) => dateKey(asRecord(asRecord(item)?.dailyRestingHeartRate)?.date));
-  push(out, seen, "heart_rate", asNumber(asRecord(asRecord(heart)?.dailyRestingHeartRate)?.beatsPerMinute));
+  const heartKey = (item: unknown) => dateKey(asRecord(asRecord(item)?.dailyRestingHeartRate)?.date);
+  const heart = latest(asArray(asRecord(snapshot.heart)?.dataPoints), heartKey);
+  push(out, seen, "heart_rate", asNumber(asRecord(asRecord(heart)?.dailyRestingHeartRate)?.beatsPerMinute), dayOfKey(heartKey(heart)));
 
-  const sleep = latest(asArray(asRecord(snapshot.sleep)?.dataPoints), (item) => {
-    const end = asRecord(asRecord(asRecord(item)?.sleep)?.interval)?.endTime;
-    return typeof end === "string" ? Date.parse(end) : 0;
-  });
+  const sleepEnd = (item: unknown) => asRecord(asRecord(asRecord(item)?.sleep)?.interval)?.endTime;
+  const asleep = (item: unknown) => asNumber(asRecord(asRecord(asRecord(item)?.sleep)?.summary)?.minutesAsleep) ?? 0;
+  const sleepDay = (item: unknown) => {
+    const day = dayOfTime(sleepEnd(item));
+    return day ? Number(day.replaceAll("-", "")) : 0;
+  };
+  const sleep = mainSleep(asArray(asRecord(snapshot.sleep)?.dataPoints), sleepDay, asleep);
   const minutes = asNumber(asRecord(asRecord(asRecord(sleep)?.sleep)?.summary)?.minutesAsleep);
-  push(out, seen, "sleep_hours", minutes == null ? null : minutes / 60);
+  push(out, seen, "sleep_hours", minutes == null ? null : minutes / 60, dayOfTime(sleepEnd(sleep)));
 
-  const steps = latest(asArray(asRecord(snapshot.steps)?.rollupDataPoints), (item) => dateKey(asRecord(item)?.civilStartTime));
-  push(out, seen, "steps", asNumber(asRecord(asRecord(steps)?.steps)?.countSum));
+  const stepRows = asArray(asRecord(snapshot.steps)?.rollupDataPoints);
+  const stepKey = (item: unknown) => dateKey(asRecord(item)?.civilStartTime);
+  const steps = latest(stepRows, stepKey);
+  push(out, seen, "steps", asNumber(asRecord(asRecord(steps)?.steps)?.countSum), dayOfKey(stepKey(steps)));
+  const earlier = dayBefore(stepRows, stepKey, steps);
+  pushEarlierSteps(out, asNumber(asRecord(asRecord(earlier)?.steps)?.countSum), dayOfKey(stepKey(earlier)));
 
-  const oxygen = latest(asArray(asRecord(snapshot.oxygen)?.dataPoints), (item) => dateKey(asRecord(asRecord(item)?.dailyOxygenSaturation)?.date));
-  push(out, seen, "blood_oxygen", asNumber(asRecord(asRecord(oxygen)?.dailyOxygenSaturation)?.averagePercentage));
+  const oxygenKey = (item: unknown) => dateKey(asRecord(asRecord(item)?.dailyOxygenSaturation)?.date);
+  const oxygen = latest(asArray(asRecord(snapshot.oxygen)?.dataPoints), oxygenKey);
+  push(out, seen, "blood_oxygen", asNumber(asRecord(asRecord(oxygen)?.dailyOxygenSaturation)?.averagePercentage), dayOfKey(oxygenKey(oxygen)));
 }
 
 function readOura(snapshot: VendorSnapshot, out: DeviceSample[], seen: Set<DeviceMetric>) {
-  const activity = latest(asArray(asRecord(snapshot.activity)?.data), (item) => dateKey(asRecord(item)?.day));
-  push(out, seen, "steps", asNumber(asRecord(activity)?.steps));
+  const byDay = (item: unknown) => dateKey(asRecord(item)?.day);
+  const activityRows = asArray(asRecord(snapshot.activity)?.data);
+  const activity = latest(activityRows, byDay);
+  push(out, seen, "steps", asNumber(asRecord(activity)?.steps), dayOfKey(byDay(activity)));
+  const earlier = dayBefore(activityRows, byDay, activity);
+  pushEarlierSteps(out, asNumber(asRecord(earlier)?.steps), dayOfKey(byDay(earlier)));
 
-  const sleep = latest(asArray(asRecord(snapshot.sleep)?.data), (item) => dateKey(asRecord(item)?.day));
+  const sleep = mainSleep(asArray(asRecord(snapshot.sleep)?.data), byDay, (item) => {
+    const record = asRecord(item);
+    const seconds = asNumber(record?.total_sleep_duration) ?? 0;
+    return record?.type === "long_sleep" ? seconds + 1_000_000 : seconds;
+  });
   const seconds = asNumber(asRecord(sleep)?.total_sleep_duration);
-  push(out, seen, "sleep_hours", seconds == null ? null : seconds / 3600);
-  push(out, seen, "heart_rate", asNumber(asRecord(sleep)?.average_heart_rate));
+  push(out, seen, "sleep_hours", seconds == null ? null : seconds / 3600, dayOfKey(byDay(sleep)));
+  push(out, seen, "heart_rate", asNumber(asRecord(sleep)?.average_heart_rate), dayOfKey(byDay(sleep)));
 
-  const oxygen = latest(asArray(asRecord(snapshot.oxygen)?.data), (item) => dateKey(asRecord(item)?.day));
-  push(out, seen, "blood_oxygen", asNumber(asRecord(asRecord(oxygen)?.spo2_percentage)?.average));
+  const oxygen = latest(asArray(asRecord(snapshot.oxygen)?.data), byDay);
+  push(out, seen, "blood_oxygen", asNumber(asRecord(asRecord(oxygen)?.spo2_percentage)?.average), dayOfKey(byDay(oxygen)));
 }
 
 function withingsOk(value: unknown): Record<string, unknown> | null {
@@ -293,9 +370,14 @@ function withingsOk(value: unknown): Record<string, unknown> | null {
 }
 
 function readWithings(snapshot: VendorSnapshot, out: DeviceSample[], seen: Set<DeviceMetric>) {
-  const activity = latest(asArray(withingsOk(snapshot.activity)?.activities), (item) => dateKey(asRecord(item)?.date));
-  push(out, seen, "steps", asNumber(asRecord(activity)?.steps));
-  push(out, seen, "heart_rate", asNumber(asRecord(activity)?.hr_average));
+  const byDate = (item: unknown) => dateKey(asRecord(item)?.date);
+  const activityRows = asArray(withingsOk(snapshot.activity)?.activities);
+  const activity = latest(activityRows, byDate);
+  const activityDay = dayOfKey(byDate(activity));
+  push(out, seen, "steps", asNumber(asRecord(activity)?.steps), activityDay);
+  const earlier = dayBefore(activityRows, byDate, activity);
+  pushEarlierSteps(out, asNumber(asRecord(earlier)?.steps), dayOfKey(byDate(earlier)));
+  push(out, seen, "heart_rate", asNumber(asRecord(activity)?.hr_average), activityDay);
 
   const groups = asArray(withingsOk(snapshot.measures)?.measuregrps);
   const measures = groups.flatMap((group) => asArray(asRecord(group)?.measures).map((measure) => ({ measure, date: asNumber(asRecord(group)?.date) ?? 0 })));
@@ -304,14 +386,16 @@ function readWithings(snapshot: VendorSnapshot, out: DeviceSample[], seen: Set<D
     const row = asRecord(match?.measure);
     const value = asNumber(row?.value);
     const unit = asNumber(row?.unit) ?? 0;
-    return value == null ? null : value * 10 ** unit;
+    return { value: value == null ? null : value * 10 ** unit, day: match?.date ? dayOfTime(match.date) : null };
   };
-  push(out, seen, "heart_rate", newest(11));
-  push(out, seen, "blood_oxygen", newest(54));
+  const heart = newest(11);
+  push(out, seen, "heart_rate", heart.value, heart.day);
+  const oxygen = newest(54);
+  push(out, seen, "blood_oxygen", oxygen.value, oxygen.day);
 
-  const sleep = latest(asArray(withingsOk(snapshot.sleep)?.series), (item) => dateKey(asRecord(item)?.date));
+  const sleep = latest(asArray(withingsOk(snapshot.sleep)?.series), byDate);
   const slept = asNumber(asRecord(asRecord(sleep)?.data)?.total_sleep_time);
-  push(out, seen, "sleep_hours", slept == null ? null : slept / 3600);
+  push(out, seen, "sleep_hours", slept == null ? null : slept / 3600, dayOfKey(byDate(sleep)));
 }
 
 export async function fetchReadings(provider: CloudProvider, token: string): Promise<DeviceSample[]> {

@@ -1,3 +1,4 @@
+import { isDoseDay } from "./dose-limit";
 import { formatTime, formatWhen, isTime, localDate } from "./format";
 
 export type ReminderMedicine = {
@@ -7,6 +8,12 @@ export type ReminderMedicine = {
   times: string[];
   reminderEnabled: boolean;
   status: string;
+  /** How often, as saved. With the label, this decides which days a dose is due. */
+  frequency?: string;
+  /** YYYY-MM-DD the medicine started, for weekly and every-other-day labels. */
+  startDate?: string;
+  /** YYYY-MM-DD of the last dose. No reminders after it. */
+  endDate?: string;
 };
 
 export type ReminderVisit = {
@@ -82,6 +89,8 @@ export function planReminders(input: { now: Date; people: ReminderPerson[] }): {
           for (let offset = 0; offset < DAYS; offset += 1) {
             const at = atLocal(now, offset, hour, minute);
             if (at.getTime() < soonest || at.getTime() > horizon) continue;
+            // A weekly or every-other-day medicine rings only on its dose days.
+            if (!isDoseDay({ instructions: medicine.instructions, frequency: medicine.frequency ?? "", startDate: medicine.startDate, endDate: medicine.endDate }, localDate(at))) continue;
             const scheduledFor = `${localDate(at)}T${time}`;
             if (taken.has(`${medicine.id}|${scheduledFor}`)) continue;
             reminders.push({

@@ -27,7 +27,8 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
   const account = isCloudProvider(query.provider ?? "") ? cloudProvider(query.provider!)!.account : "That account";
   const banners: Record<string, string> = {
     ready: `${account} is signed in. These are the latest numbers from that account.`,
-    flagged: `${account} is signed in. One number is outside a saved range, so a notice was sent.`,
+    flagged: `${account} is signed in. A number is outside a saved range, so a notice was sent.`,
+    outside: `${account} is signed in. A number is outside a saved range. A notice for it was already sent, or the day is not over yet.`,
     empty: `${account} is signed in. That account did not have a reading for the last day yet.`,
     connected: `${account} is signed in. Refresh the card if the numbers are not here yet.`,
     unconfigured: `${account}’s login page did not open. This server has no ${account} app yet, so ${account} will not show a sign-in page.`,

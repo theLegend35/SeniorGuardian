@@ -84,3 +84,14 @@ export function demoAccountFor(email: string) {
   const normalized = email.trim().toLowerCase();
   return DEMO_ACCOUNTS.find((account) => account.email === normalized) ?? null;
 }
+
+/** The shared sample accounts, and any other address on the sample domain. */
+export const SAMPLE_DOMAIN = "@demo.seniorhelp.test";
+
+export function isSampleEmail(email: string | null | undefined): boolean {
+  const normalized = String(email ?? "").trim().toLowerCase();
+  return Boolean(demoAccountFor(normalized)) || normalized.endsWith(SAMPLE_DOMAIN);
+}
+
+export const SAMPLE_LOCKED =
+  "Sample accounts are shared by everyone trying the site, so their password, name, and AI model stay as they are. Create your own account to change these.";

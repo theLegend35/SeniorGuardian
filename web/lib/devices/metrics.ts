@@ -35,18 +35,24 @@ export function parseMetricNumber(metric: DeviceMetric, raw: number): number {
   return value;
 }
 
+/**
+ * Compares a reading with the saved range. `alert` says whether to send a notice: a step count for a day that is
+ * not over yet only alerts when it is above the range, because the day's total can still reach the low end.
+ */
 export function judgeReading(
   metric: DeviceMetric,
   value: number,
   range: { low: number; high: number } | null,
   source: string,
-): { status: ReadingStatus; title: string; body: string } {
+  options: { partialDay?: boolean } = {},
+): { status: ReadingStatus; title: string; body: string; alert: boolean } {
   const spec = METRICS[metric];
   if (!range) {
     return {
       status: "no_range",
       title: `${spec.label} saved`,
       body: `${spec.label} from ${source} is ${value} ${spec.unit}. No range is saved for this reading yet, so nothing was flagged.`,
+      alert: false,
     };
   }
   const outside = value < range.low || value > range.high;
@@ -55,11 +61,14 @@ export function judgeReading(
       status: "inside",
       title: `${spec.label} is inside the saved range`,
       body: `${spec.label} from ${source} is ${value} ${spec.unit}. The range saved on the record is ${range.low}–${range.high} ${spec.unit}.`,
+      alert: false,
     };
   }
+  const stillCounting = Boolean(options.partialDay) && metric === "steps" && value < range.low;
   return {
     status: "outside",
     title: `${spec.label} is outside the saved range`,
     body: `${spec.label} from ${source} is ${value} ${spec.unit}. The range saved on the record is ${range.low}–${range.high} ${spec.unit}. This is a signal to look, not a diagnosis. If you feel unwell, contact a clinician. In an emergency, call 911.`,
+    alert: !stillCounting,
   };
 }

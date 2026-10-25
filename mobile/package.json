@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/atkinson-hyperlegible-next": "^0.4.1",
     "@expo-google-fonts/instrument-serif": "^0.4.1",
@@ -9,6 +9,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@supabase/supabase-js": "^2.117.3",
     "expo": "~57.0.27",
+    "expo-background-task": "~57.0.21",
     "expo-constants": "~57.0.21",
     "expo-device": "~57.0.2",
     "expo-document-picker": "~57.0.3",
@@ -23,6 +24,7 @@
     "expo-speech-recognition": "^57.1.1",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
+    "expo-task-manager": "~57.0.21",
     "expo-web-browser": "~57.0.3",
     "lucide-react-native": "^1.55.0",
     "react": "19.2.3",

@@ -75,7 +75,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   let link = "ready";
   try {
     const result = await syncStoredDevice(store, actor, connection.id);
-    link = result.count ? (result.outside ? "flagged" : "ready") : "empty";
+    link = result.count ? (result.alerted ? "flagged" : result.outside ? "outside" : "ready") : "empty";
   } catch (error) {
     if (isRedirect(error)) throw error;
     link = "connected";

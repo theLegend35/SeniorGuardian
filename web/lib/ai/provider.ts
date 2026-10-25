@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
@@ -23,7 +24,7 @@ type LimitKind = "switched" | "both" | "limited";
 
 type LimitNotice = { kind: LimitKind; wait: string };
 
-type Scope = { runtime: AiRuntime; notice: LimitNotice | null };
+type Scope = { runtime: AiRuntime; notice: LimitNotice | null; namespace: string; backup: boolean };
 
 const current = new AsyncLocalStorage<Scope>();
 
@@ -31,8 +32,12 @@ export function aiConfig(): AiRuntime {
   return current.getStore()?.runtime ?? runtimeFor(DEFAULT_SAVED);
 }
 
-export function runWithAi<T>(runtime: AiRuntime, run: () => Promise<T>): Promise<T> {
-  return current.run({ runtime, notice: null }, run);
+/**
+ * Runs AI calls with this model. `namespace` keeps a separate usage-limit pause (Spanish translation uses its own,
+ * so a translation that hits a limit does not pause the health assistant). `backup: false` never switches to Groq.
+ */
+export function runWithAi<T>(runtime: AiRuntime, run: () => Promise<T>, options: { namespace?: string; backup?: boolean } = {}): Promise<T> {
+  return current.run({ runtime, notice: null, namespace: options.namespace ?? "", backup: options.backup ?? true }, run);
 }
 
 export function limitNote(): string | null {
@@ -75,8 +80,14 @@ class LimitHit extends Error {
   }
 }
 
+/**
+ * A usage limit belongs to one API key and model. Keying the pause by the label alone let one
+ * person's own Groq or ChatGPT key pause that provider for everyone, including the shared Groq backup.
+ * Only a short hash of the key is kept, never the key itself.
+ */
 function quietKey(runtime: AiRuntime): string {
-  return `${runtime.label}:${runtime.model}`;
+  const keyHash = createHash("sha256").update(runtime.key).digest("hex").slice(0, 16);
+  return `${current.getStore()?.namespace ?? ""}|${runtime.baseUrl}|${runtime.model}|${keyHash}`;
 }
 
 function remembered(runtime: AiRuntime): Quiet | null {
@@ -212,7 +223,7 @@ async function callModel(runtime: AiRuntime, body: Record<string, unknown>): Pro
 
 async function useGroqBackup(body: Record<string, unknown>, geminiWaitMs: number): Promise<string | null> {
   const groq = groqBackup();
-  if (!groq.configured) {
+  if (current.getStore()?.backup === false || !groq.configured) {
     rememberNotice("limited", geminiWaitMs);
     return null;
   }
@@ -287,7 +298,7 @@ export async function generateObject<T>(
   messages: ChatMessage[],
   schema: z.ZodType<T>,
   name: string,
-  options: { maxTokens?: number } = {},
+  options: { maxTokens?: number; reasoning?: "low" | "none"; retry?: boolean } = {},
 ): Promise<T | null> {
   if (!aiConfig().configured) return null;
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
@@ -300,6 +311,7 @@ export async function generateObject<T>(
       temperature: 0.2,
       max_tokens: maxTokens,
       ...(format ? { response_format: format } : {}),
+      ...(options.reasoning && aiConfig().gemini ? { reasoning_effort: options.reasoning } : {}),
     });
     if (!text) return null;
     try {
@@ -316,7 +328,7 @@ export async function generateObject<T>(
     return attempt(null, [{ role: "system", content: `Reply with one JSON object that matches this JSON Schema exactly:\n${JSON.stringify(jsonSchema)}` }]);
   }
   const structured = await attempt({ type: "json_schema", json_schema: { name, schema: jsonSchema, strict: true } });
-  if (structured) return structured;
+  if (structured || options.retry === false) return structured;
   return attempt({ type: "json_object" }, [
     { role: "system", content: `Reply with one JSON object that matches this JSON Schema exactly:\n${JSON.stringify(jsonSchema)}` },
   ]);

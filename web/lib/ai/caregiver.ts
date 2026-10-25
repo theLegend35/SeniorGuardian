@@ -1,3 +1,4 @@
+import { misattributesAmounts, type MedicineText } from "@/lib/ai/amounts";
 import { appendLimitNote, generateText, type ChatMessage } from "@/lib/ai/provider";
 import { safetyResponse } from "@/lib/ai/safety";
 import { inventsAmounts } from "@/lib/ai/service";
@@ -150,6 +151,19 @@ export async function sharedRecord(actor: Actor): Promise<string> {
   return blocks.join("\n\n").slice(0, 12000);
 }
 
+/** The medicines in a brief written by sharedRecord: a "Medicine:" line followed by its "Label:" line. */
+export function medicinesInBrief(brief: string): MedicineText[] {
+  const lines = brief.split("\n");
+  const medicines: MedicineText[] = [];
+  lines.forEach((line, index) => {
+    const name = line.match(/^Medicine: (.+)$/)?.[1];
+    if (!name) return;
+    const label = lines[index + 1]?.match(/^Label: (.+)$/)?.[1] ?? "";
+    medicines.push({ name, text: label });
+  });
+  return medicines;
+}
+
 export async function caregiverAssistantReply(
   question: string,
   brief: string,
@@ -164,6 +178,8 @@ export async function caregiverAssistantReply(
     { role: "user", content: question },
   ];
   const answer = await generateText(messages, { maxTokens: 700, reasoning: "low" });
-  if (!answer?.trim() || inventsAmounts(answer, brief)) return { content: appendLimitNote(rules), source: "rules" };
+  if (!answer?.trim() || inventsAmounts(answer, brief) || misattributesAmounts(answer, medicinesInBrief(brief))) {
+    return { content: appendLimitNote(rules), source: "rules" };
+  }
   return { content: appendLimitNote(answer.trim()), source: "ai" };
 }

@@ -4,6 +4,7 @@ import { EmptyState, PageHeader, buttonClass, cx } from "@/components/ui/primiti
 import { markAllReadAction, markReadAction } from "@/lib/actions/health";
 import { requireActor } from "@/lib/auth/session";
 import { getStore } from "@/lib/data/index";
+import { todaysAlerts } from "@/lib/notifications/today";
 import { timeAgo } from "@/lib/time";
 import type { NotificationKind } from "@/types/domain";
 
@@ -17,14 +18,15 @@ const KIND: Record<NotificationKind, { icon: LucideIcon; tone: string }> = {
 
 export async function AlertsScreen() {
   const actor = await requireActor();
-  const notifications = [...(await (await getStore()).listNotifications(actor))].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Today's alerts only, so reminders from earlier days do not pile up. Older alerts stay saved.
+  const notifications = todaysAlerts(await (await getStore()).listNotifications(actor)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const unread = notifications.filter((item) => !item.read).length;
 
   return (
     <div className="mx-auto grid max-w-3xl gap-6">
       <PageHeader
         title="Alerts"
-        description={unread ? `${unread} new ${unread === 1 ? "alert" : "alerts"}` : "You're all caught up."}
+        description={unread ? `${unread} new today` : "You're all caught up for today."}
         actions={
           unread ? (
             <form action={markAllReadAction}>
@@ -64,8 +66,8 @@ export async function AlertsScreen() {
           })}
         </ul>
       ) : (
-        <EmptyState icon={Bell} title="No alerts yet">
-          Medicine reminders, appointment reminders, and messages from your care team will appear here.
+        <EmptyState icon={Bell} title="No alerts today">
+          Medicine reminders, visit reminders, and messages from your care team show up here on the day they arrive.
         </EmptyState>
       )}
     </div>

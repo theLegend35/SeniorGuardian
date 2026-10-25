@@ -1,5 +1,7 @@
+import { signingSecret } from "@/lib/auth/secret";
+
 function secret(): string {
-  return process.env.DEMO_SESSION_SECRET || "dev-only-senior-help-ai-change-me";
+  return signingSecret();
 }
 
 function encode(bytes: Uint8Array): string {

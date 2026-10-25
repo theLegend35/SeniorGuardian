@@ -146,7 +146,7 @@ export async function startDeviceSignIn(provider: keyof typeof COMPANY_ORIGIN) {
 }
 
 export function syncDevice(provider: keyof typeof COMPANY_ORIGIN) {
-  return webApi<{ count: number; outside: boolean }>("/api/mobile/devices/sync", { method: "POST", body: JSON.stringify({ provider }) });
+  return webApi<{ count: number; outside: boolean; alerted?: boolean }>("/api/mobile/devices/sync", { method: "POST", body: JSON.stringify({ provider }) });
 }
 
 export function loadPatientAssistant() {

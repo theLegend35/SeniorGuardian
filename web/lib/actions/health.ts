@@ -20,6 +20,7 @@ import { ValidationError } from "@/lib/auth/access";
 import { requireActor, requireRole } from "@/lib/auth/session";
 import { getStore } from "@/lib/data/index";
 import type { PatientChart, PermissionFlags } from "@/lib/data/types";
+import { isSampleEmail } from "@/lib/demo/ids";
 import { cloudProvider, isCloudProvider } from "@/lib/devices/catalog";
 import { syncStoredDevice } from "@/lib/devices/pull";
 import { isMetric } from "@/lib/devices/metrics";
@@ -179,6 +180,17 @@ export async function markTakenAction(_state: ActionState, formData: FormData): 
     await (await getStore()).markTaken(actor, text(formData, "medicationId"), text(formData, "time"));
     revalidatePath(`/${actor.role}`, "layout");
     return { notice: "Marked as taken." };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function undoTakenAction(_state: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const actor = await requireActor();
+    await (await getStore()).undoTaken(actor, text(formData, "medicationId"), text(formData, "time"));
+    revalidatePath(`/${actor.role}`, "layout");
+    return { notice: "The dose is back to not taken." };
   } catch (error) {
     return actionError(error);
   }
@@ -632,7 +644,9 @@ export async function syncDeviceAction(_state: ActionState, formData: FormData):
     revalidatePath("/patient/devices");
     revalidatePath("/patient/notifications");
     if (!result.count) return { error: `${result.account} did not return a reading for the last day. The device may still be syncing, or that metric was not shared.` };
-    return { notice: result.outside ? `${result.account} is updated. One number is outside a saved range, so a notice was sent.` : `${result.account} is updated.` };
+    if (result.alerted) return { notice: `${result.account} is updated. A number is outside a saved range, so a notice was sent.` };
+    if (result.outside) return { notice: `${result.account} is updated. A number is outside a saved range. A notice for it was already sent, or the day is not over yet.` };
+    return { notice: `${result.account} is updated.` };
   } catch (error) {
     return actionError(error);
   }
@@ -653,14 +667,21 @@ export async function updateSettingsAction(_state: ActionState, formData: FormDa
     const scale = text(formData, "textScale") || "default";
     const locale = text(formData, "locale") === "es" ? "es" : "en";
     if (scale !== "default" && scale !== "large" && scale !== "largest") return { error: "Choose a text size." };
-    await (await getStore()).updateProfile(actor, {
-      fullName: text(formData, "fullName") || actor.fullName,
-      phone: text(formData, "phone"),
-      textScale: scale,
-      locale,
-    });
+    // Sample accounts are shared, so only the display choices change there.
+    const sample = isSampleEmail(actor.email);
+    await (await getStore()).updateProfile(
+      actor,
+      sample
+        ? { textScale: scale, locale }
+        : {
+            fullName: text(formData, "fullName") || actor.fullName,
+            phone: text(formData, "phone"),
+            textScale: scale,
+            locale,
+          },
+    );
     revalidatePath("/", "layout");
-    return { notice: "Settings saved." };
+    return { notice: sample ? "Text size and language saved. Sample accounts keep their name and phone." : "Settings saved." };
   } catch (error) {
     return actionError(error);
   }
@@ -670,8 +691,11 @@ export async function markReadAction(formData: FormData): Promise<void> {
   const actor = await requireActor();
   await (await getStore()).markRead(actor, text(formData, "id")).catch(() => undefined);
   revalidatePath(`/${actor.role}`, "layout");
-  const href = text(formData, "href");
-  if (href.startsWith("/")) redirect(href);
+  // Only paths on this site. Browsers drop tabs and newlines, so "/<tab>/other.site" would leave it too.
+  const href = text(formData, "href").replace(/[\t\n\r]/g, "");
+  if (!href.startsWith("/")) return;
+  const target = new URL(href, "https://site.invalid");
+  if (target.origin === "https://site.invalid") redirect(`${target.pathname}${target.search}${target.hash}`);
 }
 
 export async function markAllReadAction(): Promise<void> {

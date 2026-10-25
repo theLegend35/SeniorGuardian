@@ -1,6 +1,8 @@
 import { mobileJson, mobileOptions } from "@/lib/mobile/http";
 import { mobileError, withMobileActor } from "@/lib/mobile/session";
 import { readAiChoice, saveAiChoice } from "@/lib/ai/settings";
+import { ValidationError } from "@/lib/auth/access";
+import { isSampleEmail, SAMPLE_LOCKED } from "@/lib/demo/ids";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
   } | null;
   return withMobileActor(request, async (actor) => {
     try {
+      if (isSampleEmail(actor.email)) throw new ValidationError(SAMPLE_LOCKED);
       const view = await saveAiChoice(actor.profileId, {
         provider: String(body?.provider ?? ""),
         ours: String(body?.ours ?? "gemini"),

@@ -59,6 +59,10 @@ export type Medicine = {
   reminderEnabled: boolean;
   prescribingProvider: string;
   notes: string;
+  /** YYYY-MM-DD the medicine started (or was added), for weekly and every-other-day labels. */
+  startDate: string;
+  /** YYYY-MM-DD of the last dose, or empty when it is ongoing. */
+  endDate: string;
 };
 
 export type Dose = {

@@ -11,7 +11,9 @@ import {
   canViewArea,
   canRevisePrescription,
   canWriteOwnRecord,
+  TIMELINE_AREA,
   ValidationError,
+  visiblePatient,
   type AccessContext,
 } from "@/lib/auth/access";
 import type {
@@ -31,11 +33,13 @@ import type {
   SignupInput,
   UploadInput,
 } from "@/lib/data/types";
+import { isSampleEmail } from "@/lib/demo/ids";
 import { isMetric, isProvider, judgeReading, METRICS, parseMetricNumber } from "@/lib/devices/metrics";
-import { reminderBlockReason, reminderCountReason } from "@/lib/medications/schedule";
+import { earlyMarkReason } from "@/lib/medications/doses";
+import { isDoseDay, reminderBlockReason, reminderCountReason } from "@/lib/medications/schedule";
 import { fanOut } from "@/lib/notifications/channels";
 import { chatNoticeMatchesPatient, isUnreadChatNotice } from "@/lib/notifications/chat";
-import { supabasePublicEnv } from "@/lib/supabase/env";
+import { clinicianEmailConfirmation, supabasePublicEnv } from "@/lib/supabase/env";
 import { requestUserClient } from "@/lib/supabase/request-user";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import { atTime, formatTime, localDate } from "@/lib/time";
@@ -297,8 +301,7 @@ export class SupabaseHealthStore implements HealthStore {
     body: string;
     href: string | null;
     alarmKey?: string;
-  }) {
-    await fanOut(input);
+  }): Promise<boolean> {
     const { error } = await this.admin().from("notifications").insert({
       profile_id: input.profileId,
       kind: input.kind,
@@ -307,7 +310,11 @@ export class SupabaseHealthStore implements HealthStore {
       href: input.href,
       alarm_key: input.alarmKey ?? null,
     });
-    if (error && error.code !== "23505") throw new ValidationError(error.message);
+    // The same alarm key was already sent to this person, so no second notice and no second phone alert.
+    if (error?.code === "23505") return false;
+    if (error) throw new ValidationError(error.message);
+    await fanOut(input);
+    return true;
   }
 
   private async identity(patientId: string): Promise<{ patient: Patient; profile: Profile }> {
@@ -332,10 +339,13 @@ export class SupabaseHealthStore implements HealthStore {
 
   async createAccount(input: SignupInput): Promise<Profile> {
     const admin = this.admin();
+    const email = input.email.trim().toLowerCase();
+    // A patient adds a clinician or caregiver by email, so those accounts must prove they own it.
+    const confirmFirst = input.role !== "patient" && clinicianEmailConfirmation();
     const { data, error } = await admin.auth.admin.createUser({
-      email: input.email.trim().toLowerCase(),
+      email,
       password: input.password,
-      email_confirm: true,
+      email_confirm: !confirmFirst,
       app_metadata: {
         role: input.role,
         full_name: input.fullName.trim(),
@@ -350,6 +360,14 @@ export class SupabaseHealthStore implements HealthStore {
     const { data: profile, error: profileError } = await admin.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
     if (profileError || !profile) throw new ValidationError("The account was created, but the profile trigger did not run. Apply the database migration.");
     return profileFrom(profile as Row);
+  }
+
+  /** Whether the account behind this profile has confirmed it owns this email address. */
+  private async ownsEmail(profileId: string, email: string): Promise<boolean> {
+    if (isSampleEmail(email) || !clinicianEmailConfirmation()) return true;
+    const { data, error } = await this.admin().auth.admin.getUserById(profileId);
+    if (error || !data.user) return false;
+    return Boolean(data.user.email_confirmed_at) && (data.user.email ?? "").trim().toLowerCase() === email;
   }
 
   private async finishAccount(admin: SupabaseClient, userId: string, input: SignupInput) {
@@ -540,10 +558,7 @@ export class SupabaseHealthStore implements HealthStore {
     const ctx = await this.context();
     assertCan(canKnowPatient(actor, patientId, ctx));
     const { patient: source, profile } = await this.identity(patientId);
-    const fullRecord = actor.role !== "caregiver" || canViewArea(actor, patientId, "overview", ctx);
-    const patient = fullRecord
-      ? source
-      : { ...source, address: "", emergencyContact: "", bloodType: "", allergies: "", conditions: "" };
+    const patient = visiblePatient(actor, patientId, source, ctx);
     const db = await this.db();
     const see = (area: Parameters<typeof canViewArea>[2]) => canViewArea(actor, patientId, area, ctx);
     const rows = async (table: string) => ((await db.from(table).select("*").eq("patient_id", patientId)).data ?? []) as Row[];
@@ -570,16 +585,25 @@ export class SupabaseHealthStore implements HealthStore {
     const grant = ctx.caregiverPermissions.find(
       (item) => item.patientId === patientId && item.caregiverId === actor.caregiverId && item.status === "active",
     );
+    const concerns = see("concerns")
+      ? (await rows("health_concerns")).map(concernFrom).filter((item) => actor.role === "patient" || item.sharedWithCareTeam)
+      : null;
+    const sharedConcerns = new Set((concerns ?? []).map((item) => item.id));
+    // The database applies the same rule; this keeps the page right on an older schema too.
+    const visibleEvent = (event: TimelineEvent) =>
+      see(TIMELINE_AREA[event.kind] ?? "timeline") &&
+      (actor.role === "patient" || (event.kind !== "concern" && event.kind !== "image") || sharedConcerns.has(event.refId));
     return {
       patient,
       profile,
       medications: see("medications") ? (await rows("medications")).map(medicationFrom) : null,
       medicationEvents: see("medications") ? (await rows("medication_events")).map(eventFrom) : null,
       appointments: see("appointments") ? (await rows("appointments")).map(appointmentFrom) : null,
-      concerns: see("concerns")
-        ? (await rows("health_concerns")).map(concernFrom).filter((item) => actor.role === "patient" || item.sharedWithCareTeam)
-        : null,
-      timeline: (await db.from("health_timeline").select("*").eq("patient_id", patientId).order("created_at", { ascending: false })).data?.map((row) => timelineFrom(row as Row)) ?? [],
+      concerns,
+      timeline:
+        (await db.from("health_timeline").select("*").eq("patient_id", patientId).order("created_at", { ascending: false })).data
+          ?.map((row) => timelineFrom(row as Row))
+          .filter(visibleEvent) ?? [],
       documents: see("documents") ? (await rows("health_documents")).map(documentFrom) : null,
       prescriptions: see("medications") ? (await rows("prescriptions")).map(prescriptionFrom) : null,
       notes,
@@ -639,7 +663,7 @@ export class SupabaseHealthStore implements HealthStore {
     const { data: medications } = await db.from("medications").select("*").eq("patient_id", patientId).eq("status", "active");
     const { data: events } = await db.from("medication_events").select("*").eq("patient_id", patientId).eq("kind", "taken");
     const day = localDate();
-    return ((medications ?? []) as Row[]).map(medicationFrom).flatMap((medication) =>
+    return ((medications ?? []) as Row[]).map(medicationFrom).filter((medication) => isDoseDay(medication, day)).flatMap((medication) =>
       medication.times.map((time) => {
         const scheduledFor = atTime(day, time);
         const taken = ((events ?? []) as Row[]).some((event) => text(event, "medication_id") === medication.id && text(event, "scheduled_for") === scheduledFor);
@@ -804,6 +828,8 @@ export class SupabaseHealthStore implements HealthStore {
     const [cleanTime] = cleanTimes([time]);
     if (!cleanTime) throw new ValidationError("Choose a reminder time.");
     const scheduledFor = atTime(localDate(), cleanTime);
+    const early = earlyMarkReason(scheduledFor, cleanTime);
+    if (early) throw new ValidationError(early);
     const db = await this.db();
     const existing = await db.from("medication_events").select("id").eq("medication_id", medicationId).eq("kind", "taken").eq("scheduled_for", scheduledFor).limit(1);
     if (existing.data && existing.data.length > 0) return;
@@ -824,6 +850,28 @@ export class SupabaseHealthStore implements HealthStore {
       ref_table: "medications",
       ref_id: medication.id,
     });
+  }
+
+  async undoTaken(actor: Actor, medicationId: string, time: string): Promise<void> {
+    const medication = await this.requireMedication(medicationId);
+    const own = canWriteOwnRecord(actor, medication.patientId);
+    const ctx = await this.context();
+    assertCan(own || canManageReminders(actor, medication.patientId, ctx));
+    const [cleanTime] = cleanTimes([time]);
+    if (!cleanTime) throw new ValidationError("Choose a reminder time.");
+    const scheduledFor = atTime(localDate(), cleanTime);
+    const db = await this.db();
+    const { data, error } = await db
+      .from("medication_events")
+      .delete()
+      .eq("medication_id", medicationId)
+      .eq("kind", "taken")
+      .eq("scheduled_for", scheduledFor)
+      .select("id");
+    if (error?.code === "42501") throw new ValidationError("Undo needs the latest database update (supabase db push).");
+    if (error) throw new ValidationError(error.message);
+    if (!data?.length) throw new ValidationError("That dose is not marked taken today, so there is nothing to undo.");
+    // The database adds the "Taken mark removed" timeline entry (migration 20261021180000).
   }
 
   async setReminder(actor: Actor, medicationId: string, time: string): Promise<void> {
@@ -1224,6 +1272,11 @@ export class SupabaseHealthStore implements HealthStore {
     const row = data as Row;
     const ctx = await this.context();
     assertCan(canReadFile(actor, text(row, "patient_id"), text(row, "bucket") as UploadInput["bucket"], ctx));
+    if (text(row, "bucket") === "concerns" && actor.role !== "patient") {
+      // A concern photo goes to the care team only with a concern the patient shared.
+      const shared = await db.from("health_concerns").select("id").eq("image_file_id", fileId).eq("shared_with_care_team", true).limit(1);
+      assertCan(Boolean(shared.data?.length), "This photo has not been shared with the care team.");
+    }
     const downloaded = await db.storage.from("health-files").download(text(row, "storage_path"));
     if (downloaded.error || !downloaded.data) throw new ValidationError("This file is no longer available.");
     return { mimeType: text(row, "mime_type"), fileName: text(row, "file_name"), data: Buffer.from(await downloaded.data.arrayBuffer()) };
@@ -1326,8 +1379,12 @@ export class SupabaseHealthStore implements HealthStore {
   async authorizeDoctor(actor: Actor, email: string): Promise<void> {
     if (actor.role !== "patient" || !actor.patientId) throw new AccessError();
     const admin = this.admin();
-    const { data: profile } = await admin.from("profiles").select("id").eq("email", email.trim().toLowerCase()).eq("role", "doctor").maybeSingle();
+    const address = email.trim().toLowerCase();
+    const { data: profile } = await admin.from("profiles").select("id").eq("email", address).eq("role", "doctor").maybeSingle();
     if (!profile) throw new ValidationError("No clinician account uses that email. Nothing was shared.");
+    if (!(await this.ownsEmail(text(profile as Row, "id"), address))) {
+      throw new ValidationError("That clinician has not confirmed their email address yet, so nothing was shared. Ask them to open the confirmation link from Senior Guardian, then try again.");
+    }
     const { data: doctor } = await admin.from("doctors").select("id").eq("profile_id", text(profile as Row, "id")).maybeSingle();
     if (!doctor) throw new ValidationError("That clinician record is incomplete.");
     const { error } = await (await this.db()).from("patient_doctors").upsert(
@@ -1361,8 +1418,12 @@ export class SupabaseHealthStore implements HealthStore {
   async inviteCaregiver(actor: Actor, email: string): Promise<void> {
     if (!actor.patientId) throw new AccessError();
     const admin = this.admin();
-    const { data: profile } = await admin.from("profiles").select("id").eq("email", email.trim().toLowerCase()).eq("role", "caregiver").maybeSingle();
+    const address = email.trim().toLowerCase();
+    const { data: profile } = await admin.from("profiles").select("id").eq("email", address).eq("role", "caregiver").maybeSingle();
     if (!profile) throw new ValidationError("No caregiver account uses that email. Nothing was shared.");
+    if (!(await this.ownsEmail(text(profile as Row, "id"), address))) {
+      throw new ValidationError("That caregiver has not confirmed their email address yet, so nothing was shared. Ask them to open the confirmation link from Senior Guardian, then try again.");
+    }
     const { data: caregiver } = await admin.from("caregivers").select("id").eq("profile_id", text(profile as Row, "id")).maybeSingle();
     if (!caregiver) throw new ValidationError("That caregiver record is incomplete.");
     const db = await this.db();
@@ -1454,7 +1515,7 @@ export class SupabaseHealthStore implements HealthStore {
     const db = await this.db();
     const { data: medications } = await db.from("medications").select("*").eq("patient_id", patientId).eq("status", "active");
     const { data: events } = await db.from("medication_events").select("medication_id, scheduled_for").eq("patient_id", patientId).eq("kind", "taken");
-    return ((medications ?? []) as Row[]).map(medicationFrom).flatMap((medication) =>
+    return ((medications ?? []) as Row[]).map(medicationFrom).filter((medication) => isDoseDay(medication, day)).flatMap((medication) =>
       medication.times.map((time) => {
         const scheduledFor = atTime(day, time);
         const taken = ((events ?? []) as Row[]).some((event) => text(event, "medication_id") === medication.id && text(event, "scheduled_for") === scheduledFor);
@@ -1585,6 +1646,7 @@ export class SupabaseHealthStore implements HealthStore {
         unit: text(row, "unit"),
         recordedAt: text(row, "recorded_at"),
         status: text(row, "status") as DeviceReading["status"],
+        ...(row.measured_on ? { measuredOn: text(row, "measured_on").slice(0, 10) } : {}),
       })),
     };
   }
@@ -1618,8 +1680,8 @@ export class SupabaseHealthStore implements HealthStore {
 
   async recordDeviceReading(
     actor: Actor,
-    input: { connectionId: string; metric: DeviceMetric; value: number; recordedAt: string },
-  ): Promise<DeviceReading> {
+    input: { connectionId: string; metric: DeviceMetric; value: number; recordedAt: string; day?: string | null; partialDay?: boolean },
+  ): Promise<DeviceReading & { alerted: boolean }> {
     if (!actor.patientId || !canWriteOwnRecord(actor, actor.patientId)) throw new AccessError();
     if (!isMetric(input.metric)) throw new ValidationError("Choose a reading.");
     const db = await this.db();
@@ -1630,25 +1692,54 @@ export class SupabaseHealthStore implements HealthStore {
     if (Number.isNaN(recordedAt.getTime()) || recordedAt.getTime() > Date.now() + 5 * 60_000) {
       throw new ValidationError("Use a time that has already happened.");
     }
+    const day = input.day && /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : null;
     const { data: rangeRow } = await db.from("reading_ranges").select("low, high").eq("patient_id", actor.patientId).eq("metric", input.metric).maybeSingle();
     const range = rangeRow ? { low: Number((rangeRow as Row).low), high: Number((rangeRow as Row).high) } : null;
-    const judged = judgeReading(input.metric, value, range, text(connection as Row, "label"));
-    const { data, error } = await db
-      .from("device_readings")
-      .insert({
-        patient_id: actor.patientId,
-        connection_id: input.connectionId,
-        metric: input.metric,
-        value,
-        unit: METRICS[input.metric].unit,
-        recorded_at: recordedAt.toISOString(),
-        status: judged.status,
-      })
-      .select("*")
-      .single();
-    if (error || !data) throw new ValidationError(error?.message || "The reading could not be saved.");
+    const judged = judgeReading(input.metric, value, range, text(connection as Row, "label"), { partialDay: input.partialDay });
+    const row = {
+      patient_id: actor.patientId,
+      connection_id: input.connectionId,
+      metric: input.metric,
+      value,
+      unit: METRICS[input.metric].unit,
+      recorded_at: recordedAt.toISOString(),
+      status: judged.status,
+    };
+    // Before the 2026-10-21 database update there is no measured_on column; then each sync adds a row as before.
+    const missingDayColumn = (error: { code?: string; message?: string } | null) =>
+      Boolean(error && (error.code === "42703" || error.code === "PGRST204" || /measured_on/.test(error.message ?? "")));
+    const sameDay = () =>
+      db.from("device_readings").select("id").eq("connection_id", input.connectionId).eq("metric", input.metric).eq("measured_on", day!).maybeSingle();
+    let saved: Row | null = null;
+    let keyed = Boolean(day);
+    if (day) {
+      const existing = await sameDay();
+      if (missingDayColumn(existing.error)) keyed = false;
+      else if (existing.error) throw new ValidationError(existing.error.message);
+      else if (existing.data) {
+        const updated = await db.from("device_readings").update(row).eq("id", text(existing.data as Row, "id")).select("*").single();
+        if (updated.error || !updated.data) throw new ValidationError(updated.error?.message || "The reading could not be saved.");
+        saved = updated.data as Row;
+      }
+    }
+    if (!saved) {
+      const payload: Record<string, unknown> = keyed ? { ...row, measured_on: day } : row;
+      const inserted = await db.from("device_readings").insert(payload).select("*").single();
+      if (inserted.error?.code === "23505" && keyed) {
+        // Another sync saved this day a moment ago. Update that reading instead.
+        const again = await sameDay();
+        const id = again.data ? text(again.data as Row, "id") : "";
+        const updated = id ? await db.from("device_readings").update(row).eq("id", id).select("*").single() : null;
+        if (!updated || updated.error || !updated.data) throw new ValidationError("The reading could not be saved.");
+        saved = updated.data as Row;
+      } else if (inserted.error || !inserted.data) {
+        throw new ValidationError(inserted.error?.message || "The reading could not be saved.");
+      } else {
+        saved = inserted.data as Row;
+      }
+    }
     const reading: DeviceReading = {
-      id: text(data as Row, "id"),
+      id: text(saved, "id"),
       patientId: actor.patientId,
       connectionId: input.connectionId,
       metric: input.metric,
@@ -1656,20 +1747,25 @@ export class SupabaseHealthStore implements HealthStore {
       unit: METRICS[input.metric].unit,
       recordedAt: recordedAt.toISOString(),
       status: judged.status,
+      ...(keyed && day ? { measuredOn: day } : {}),
     };
-    if (judged.status === "outside") {
+    let alerted = false;
+    if (judged.status === "outside" && judged.alert) {
+      // One notice per device, metric, and day, however many times the same day's number is synced.
+      const alarmKey = keyed && day ? `reading:${input.connectionId}:${input.metric}:${day}` : `reading:${reading.id}`;
       for (const person of await this.readingAudience(actor.patientId)) {
-        await this.notify({
+        const sent = await this.notify({
           profileId: person.profileId,
           kind: "app",
           title: judged.title,
           body: judged.body,
           href: person.href,
-          alarmKey: `reading:${reading.id}`,
+          alarmKey,
         });
+        alerted = alerted || sent;
       }
     }
-    return reading;
+    return { ...reading, alerted };
   }
 
   async linkDeviceAccount(actor: Actor, connectionId: string, secret: DeviceSecret): Promise<void> {

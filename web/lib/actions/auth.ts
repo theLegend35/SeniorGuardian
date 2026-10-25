@@ -1,18 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { homeFor } from "@/lib/auth/access";
+import { ConfirmEmailError, homeFor } from "@/lib/auth/access";
+import { confirmUrl } from "@/lib/auth/origin";
 import { resetEmailIssue, resetPasswordIssue } from "@/lib/auth/password-reset";
 import { signInWithPassword, signOut, signUpAccount } from "@/lib/auth/session";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/demo/ids";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, isSampleEmail } from "@/lib/demo/ids";
 import { clearTutorial, startTutorial } from "@/lib/auth/tutorial";
 import { actionError, type ActionState } from "@/lib/actions/state";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAuthConfigured } from "@/lib/supabase/env";
 import type { Role } from "@/types/domain";
+
+const SAMPLE_PASSWORD_NOTICE = `Sample accounts share one password so everyone can try the site. Use ${DEMO_PASSWORD} from the sign-in page, or create your own account.`;
 
 function safeNext(value: FormDataEntryValue | null, role: Role): string {
   const next = String(value ?? "");
@@ -25,6 +27,7 @@ export async function loginAction(_state: ActionState, formData: FormData): Prom
     const actor = await signInWithPassword(String(formData.get("email") ?? ""), String(formData.get("password") ?? ""));
     target = safeNext(formData.get("next"), actor.role);
   } catch (error) {
+    if (error instanceof ConfirmEmailError) return { notice: error.message };
     return actionError(error);
   }
   redirect(target);
@@ -42,13 +45,15 @@ export async function signupAction(_state: ActionState, formData: FormData): Pro
   if (role !== "patient" && role !== "doctor" && role !== "caregiver") {
     return { error: "Choose patient, clinician, or caregiver." };
   }
+  const email = String(formData.get("email") ?? "");
+  if (isSampleEmail(email)) return { error: "That address belongs to the sample accounts. Use your own email address." };
   let target = "";
   let tour: Role | null = null;
   try {
     const actor = await signUpAccount({
       role,
       fullName: String(formData.get("fullName") ?? ""),
-      email: String(formData.get("email") ?? ""),
+      email,
       password: String(formData.get("password") ?? ""),
       phone: String(formData.get("phone") ?? ""),
       specialty: String(formData.get("specialty") ?? ""),
@@ -59,6 +64,7 @@ export async function signupAction(_state: ActionState, formData: FormData): Pro
     tour = actor.role;
     target = homeFor(actor.role);
   } catch (error) {
+    if (error instanceof ConfirmEmailError) return { notice: error.message };
     return actionError(error);
   }
   if (tour) await startTutorial(tour);
@@ -70,25 +76,18 @@ export async function dismissTutorialAction(): Promise<void> {
   revalidatePath("/", "layout");
 }
 
-async function siteOrigin(): Promise<string> {
-  const headerStore = await headers();
-  const host = (headerStore.get("x-forwarded-host") ?? headerStore.get("host") ?? "").split(",")[0]?.trim() ?? "";
-  const proto = (headerStore.get("x-forwarded-proto") ?? "https").split(",")[0]?.trim() || "https";
-  if (!host || /[\s/]/.test(host)) return "";
-  return `${proto}://${host}`;
-}
-
 export async function requestResetAction(_state: ActionState, formData: FormData): Promise<ActionState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const issue = resetEmailIssue(email);
   if (issue) return { error: issue };
+  if (isSampleEmail(email)) return { notice: SAMPLE_PASSWORD_NOTICE };
   if (!supabaseAuthConfigured()) {
     return { error: "Password reset email is available on the live site. On this copy, sign in with the password you created." };
   }
   try {
-    const origin = await siteOrigin();
+    const redirectTo = await confirmUrl("recovery");
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, origin ? { redirectTo: `${origin}/auth/confirm` } : undefined);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
     if (error) return { error: "We could not send the reset email. Wait a minute and try again." };
   } catch (error) {
     return actionError(error);
@@ -110,10 +109,13 @@ export async function updatePasswordAction(_state: ActionState, formData: FormDa
     const { data } = await supabase.auth.getClaims();
     const profileId = data?.claims?.sub;
     if (!profileId) return { error: "This reset link has expired. Request a new one." };
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) return { error: "That password could not be saved. Request a new link and try again." };
+    const email = typeof data?.claims?.email === "string" ? data.claims.email : "";
+    if (isSampleEmail(email)) return { error: SAMPLE_PASSWORD_NOTICE };
     const { SupabaseHealthStore } = await import("@/lib/supabase/store");
     const actor = await new SupabaseHealthStore().getActor(profileId);
+    if (actor && isSampleEmail(actor.email)) return { error: SAMPLE_PASSWORD_NOTICE };
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { error: "That password could not be saved. Request a new link and try again." };
     target = actor ? homeFor(actor.role) : "/login";
   } catch (error) {
     return actionError(error);

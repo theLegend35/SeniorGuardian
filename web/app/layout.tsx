@@ -29,8 +29,17 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const actor = await currentActor();
   const pendingTour = actor ? await tutorialFor(actor) : null;
+  // data-scroll-behavior tells Next.js 16 to turn smooth scrolling off while it moves to a new page.
+  // Without it, a page opened from a scrolled page (such as the sample sign-in buttons) landed part way down.
   return (
-    <html lang={localeOf(actor?.locale)} data-scale={actor?.textScale ?? "default"} data-guest={actor ? undefined : ""} className={type.variable} suppressHydrationWarning>
+    <html
+      lang={localeOf(actor?.locale)}
+      data-scale={actor?.textScale ?? "default"}
+      data-guest={actor ? undefined : ""}
+      data-scroll-behavior="smooth"
+      className={type.variable}
+      suppressHydrationWarning
+    >
       <body className="min-h-dvh font-sans antialiased" suppressHydrationWarning>
         <EarlyScripts />
         <PageTranslator locale={localeOf(actor?.locale)} />

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { misattributesAmounts, type MedicineText } from "@/lib/ai/amounts";
 import { anomalyReview, flaggedLines } from "@/lib/ai/anomalies";
 import { parseTime } from "@/lib/ai/chat";
 import { aiConfig, appendLimitNote, generateObject, imagePart, type ImageInput } from "@/lib/ai/provider";
@@ -241,6 +242,8 @@ export async function clinicianAssistantReply(input: {
   visits?: SavedVisit[];
   history: HistoryTurn[];
   image?: ImageInput | null;
+  /** Active medicines on the charts, so an amount can be checked against its own label. */
+  medicines?: MedicineText[];
 }): Promise<{ text: string; source: "ai" | "rules"; proposedAction: ProposedAction | null }> {
   const rules = clinicianFallback(input.question, input.chart, input.visits ?? []);
   const asked = input.question.trim();
@@ -275,7 +278,11 @@ export async function clinicianAssistantReply(input: {
     "clinician_assistant",
     { maxTokens: 1600 },
   );
-  if (!result?.reply.trim() || inventsAmounts(result.reply, `${input.chart}\n${asked}`)) {
+  if (
+    !result?.reply.trim() ||
+    inventsAmounts(result.reply, `${input.chart}\n${asked}`) ||
+    misattributesAmounts(result.reply, input.medicines ?? [])
+  ) {
     return drafted
       ? { text: appendLimitNote(draftCopy(drafted)), source: "rules", proposedAction: drafted }
       : { text: appendLimitNote(rules), source: "rules", proposedAction: null };

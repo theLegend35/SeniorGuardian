@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       const connection = board.connections.find((item) => item.provider === provider && item.linked) ?? board.connections.find((item) => item.provider === provider);
       if (!connection?.linked) return mobileJson({ error: "Sign in with that account first." }, 400);
       const result = await syncStoredDevice(store, actor, connection.id);
-      return mobileJson({ count: result.count, outside: result.outside });
+      return mobileJson({ count: result.count, outside: result.outside, alerted: result.alerted });
     } catch (error) {
       if (error instanceof Error && error.name !== "AccessError" && error.name !== "ValidationError") {
         return mobileJson({ error: error.message }, 400);

@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 
+import type { MedicineText } from "@/lib/ai/amounts";
 import { clinicianAssistantReply, type SavedVisit } from "@/lib/ai/clinician";
 import { VISION_TYPES, type ImageInput } from "@/lib/ai/provider";
 import { aiStatus } from "@/lib/ai/service";
@@ -30,6 +31,7 @@ async function roster(actor: Actor) {
   const patients = await store.listPatientCards(actor);
   const chunks: string[] = [];
   const visits: SavedVisit[] = [];
+  const medicines: MedicineText[] = [];
   for (const patient of patients) {
     const chart = await store.getChart(actor, patient.patientId);
     const lines = [
@@ -48,6 +50,7 @@ async function roster(actor: Actor) {
     for (const med of chart.medications ?? []) {
       if (med.status !== "active") continue;
       lines.push(`${med.name}: ${med.instructions}`);
+      medicines.push({ id: med.id, name: med.name, text: `${med.instructions}\n${med.frequency}` });
     }
     for (const doc of chart.documents ?? []) lines.push(`Record ${doc.title}\n${doc.sourceText}`);
     const board = await store.getDeviceBoard(actor, patient.patientId);
@@ -63,6 +66,7 @@ async function roster(actor: Actor) {
     patients,
     chart: chunks.join("\n\n"),
     visits,
+    medicines,
     refs: patients.map((patient) => ({ id: patient.patientId, name: patient.fullName })),
   };
 }
@@ -84,7 +88,7 @@ export async function askClinicianAssistant(
   actor: Actor,
   input: { question: string; patientId: string; file: { name: string; mimeType: string; data: Buffer } | null },
 ): Promise<ClinicianAssistantPayload> {
-  const { store, patients, chart, visits, refs } = await roster(actor);
+  const { store, patients, chart, visits, medicines, refs } = await roster(actor);
   const question = input.question.trim().slice(0, 2000);
   let attachment = "";
   let image: ImageInput | null = null;
@@ -117,7 +121,7 @@ export async function askClinicianAssistant(
   const thread = await store.getClinicianThread(actor);
   const history = thread.messages.map((message) => ({ role: message.role, content: message.content }));
   await store.appendClinicianMessage(actor, { role: "user", content: asked, proposedAction: null });
-  const answer = await withProfileAi(actor.profileId, () => clinicianAssistantReply({ question: asked, chart, patients: refs, visits, history, image }));
+  const answer = await withProfileAi(actor.profileId, () => clinicianAssistantReply({ question: asked, chart, patients: refs, visits, history, image, medicines }));
   await store.appendClinicianMessage(actor, {
     role: "assistant",
     content: answer.text,

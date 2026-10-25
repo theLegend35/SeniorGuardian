@@ -14,6 +14,7 @@ import {
   Moon,
   Phone,
   Pill,
+  RotateCcw,
   ShieldCheck,
   Stethoscope,
   type LucideIcon,
@@ -25,7 +26,7 @@ import { AppText, Badge, Button, Chip, DateTile, IconTile, ProgressBar, type Ton
 import { MetricRing } from "@/components/MetricRing";
 import { useAuth } from "@/lib/auth";
 import { clock, formatTime, relativeDay, timeAgo } from "@/lib/format";
-import { markTaken } from "@/lib/records";
+import { canMarkTaken, markOpensTime, markTaken, undoTaken } from "@/lib/records";
 import { subscribeReminders, syncReminders, type ReminderStatus } from "@/lib/reminders";
 import { colors, radius, shadows } from "@/lib/theme";
 import type { Dose, HealthProfile, Reading, TimelineItem, Visit } from "@/lib/types";
@@ -60,17 +61,20 @@ export function DoseRow({ dose, canMark, onDone, showLink = true }: { dose: Dose
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const due = !dose.taken && new Date(dose.scheduledFor).getTime() <= Date.now();
+  // A dose can be marked from an hour before its time, so a later dose is not marked by mistake.
+  const markable = canMark && canMarkTaken(dose.scheduledFor);
 
-  const mark = async () => {
+  const change = async (undo: boolean) => {
     if (!actor) return;
     setPending(true);
     setError(null);
     try {
-      await markTaken(actor, dose.medicine, dose.time);
+      if (undo) await undoTaken(actor, dose.medicine, dose.time);
+      else await markTaken(actor, dose.medicine, dose.time);
       await syncReminders(actor);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not mark this dose.");
+      setError(err instanceof Error ? err.message : "Could not change this dose.");
     } finally {
       setPending(false);
     }
@@ -100,10 +104,24 @@ export function DoseRow({ dose, canMark, onDone, showLink = true }: { dose: Dose
       </View>
       <View style={styles.doseActions}>
         {dose.taken ? (
-          <Badge tone="success" icon={Check}>
-            Taken
-          </Badge>
-        ) : canMark ? (
+          <>
+            <Badge tone="success" icon={Check}>
+              Taken
+            </Badge>
+            {canMark ? (
+              <Button
+                label={pending ? "Undoing…" : "Undo"}
+                accessibilityLabel={`Undo: ${dose.medicine.name} at ${formatTime(dose.time)} was not taken`}
+                icon={RotateCcw}
+                size="sm"
+                variant="ghost"
+                loading={pending}
+                inline
+                onPress={() => void change(true)}
+              />
+            ) : null}
+          </>
+        ) : markable ? (
           <Button
             label={pending ? "Saving…" : "Mark taken"}
             accessibilityLabel={`Mark taken: ${dose.medicine.name} at ${formatTime(dose.time)}`}
@@ -112,7 +130,7 @@ export function DoseRow({ dose, canMark, onDone, showLink = true }: { dose: Dose
             variant={due ? "primary" : "secondary"}
             loading={pending}
             inline
-            onPress={() => void mark()}
+            onPress={() => void change(false)}
           />
         ) : due ? (
           <Badge tone="apricot">Due</Badge>
@@ -121,7 +139,7 @@ export function DoseRow({ dose, canMark, onDone, showLink = true }: { dose: Dose
         )}
         {!dose.taken ? (
           <AppText size={13} weight="semibold" color={due ? colors.apricot700 : colors.ink400}>
-            {due ? "Due now" : "Later today"}
+            {due ? "Due now" : canMark && !markable ? `Later today · can be marked from ${markOpensTime(dose.time)}` : "Later today"}
           </AppText>
         ) : null}
       </View>
