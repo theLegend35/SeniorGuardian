@@ -12,7 +12,7 @@ export default function AccessibilityPage() {
       <p className="mt-8 text-[0.95rem] font-semibold text-brand-700">Accessibility</p>
       <h1 className="mt-1 text-[2.1rem] leading-tight font-extrabold text-ink-950">How to make this site easier to use</h1>
       <p className="mt-4 text-[1.05rem] leading-relaxed text-ink-600">
-        The accessibility button at the bottom right changes text size and contrast on this browser. Quick assist, beside it, answers product questions. Inside a portal, the question mark opens a short how-to tour. A new account opens that tour on the first visit.
+        The accessibility button at the bottom right changes text size and contrast on this browser. When you are signed in, it also switches the site between English and Spanish. Quick assist, beside it, answers product questions. Inside a portal, the question mark opens a short how-to tour. A new account opens that tour on the first visit.
       </p>
 
       <section className="mt-8 grid gap-3">

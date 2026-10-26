@@ -44,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <EarlyScripts />
         <PageTranslator locale={localeOf(actor?.locale)} />
         {children}
-        <HelpDock signedIn={Boolean(actor)} steps={actor ? tutorialSteps(actor.role) : null} autoOpen={pendingTour !== null} />
+        <HelpDock signedIn={Boolean(actor)} locale={localeOf(actor?.locale)} steps={actor ? tutorialSteps(actor.role) : null} autoOpen={pendingTour !== null} />
       </body>
     </html>
   );

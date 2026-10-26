@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Accessibility, Contrast, RotateCcw, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Accessibility, Contrast, Languages, RotateCcw, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import { dismissTutorialAction } from "@/lib/actions/auth";
-import { setTextScaleAction } from "@/lib/actions/health";
+import { setLocaleAction, setTextScaleAction } from "@/lib/actions/health";
 import { SiteChat } from "@/components/marketing/SiteChat";
 import { cx } from "@/components/ui/primitives";
+import type { Locale } from "@/lib/i18n";
 
 type Step = { title: string; body: string; target?: string };
 type Hole = { top: number; left: number; width: number; height: number };
@@ -18,6 +19,11 @@ const SCALES: Array<{ id: TextScale; label: string }> = [
   { id: "default", label: "Default" },
   { id: "large", label: "Large" },
   { id: "largest", label: "Extra large" },
+];
+
+const LANGUAGES: Array<{ id: Locale; label: string }> = [
+  { id: "en", label: "English" },
+  { id: "es", label: "Español" },
 ];
 
 const MARKETING: Step[] = [
@@ -98,14 +104,17 @@ function isScale(value: string | undefined): value is TextScale {
 
 export function HelpDock({
   signedIn,
+  locale: initialLocale,
   steps,
   autoOpen,
 }: {
   signedIn: boolean;
+  locale: Locale;
   steps: Step[] | null;
   autoOpen: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const showTour = /^\/(patient|doctor|caregiver)(\/|$)/.test(pathname);
   const tourSteps = steps ?? MARKETING;
   const panelId = useId();
@@ -116,6 +125,7 @@ export function HelpDock({
   const [index, setIndex] = useState(0);
   const [scale, setScale] = useState<TextScale>("default");
   const [contrast, setContrast] = useState(false);
+  const [locale, setLocale] = useState<Locale>(initialLocale);
   const [hole, setHole] = useState<Hole | null>(null);
   const autoOpenRef = useRef(autoOpen);
   autoOpenRef.current = autoOpen;
@@ -140,6 +150,10 @@ export function HelpDock({
     if (isScale(root.dataset.scale)) setScale(root.dataset.scale);
     setContrast(root.dataset.contrast === "high");
   }, []);
+
+  useEffect(() => {
+    setLocale(initialLocale);
+  }, [initialLocale]);
 
   useEffect(() => {
     if (!autoOpen || !showTour) return;
@@ -234,6 +248,15 @@ export function HelpDock({
       /* private browsing */
     }
     if (signedIn) void setTextScaleAction(next).catch(() => undefined);
+  }
+
+  function applyLocale(next: Locale) {
+    setLocale(next);
+    document.documentElement.lang = next;
+    if (!signedIn) return;
+    void setLocaleAction(next)
+      .then(() => router.refresh())
+      .catch(() => undefined);
   }
 
   function applyContrast(on: boolean) {
@@ -355,6 +378,34 @@ export function HelpDock({
                 );
               })}
             </div>
+
+            {signedIn ? (
+              <>
+                <p className="mt-4 flex items-center gap-2 text-[0.78rem] font-bold tracking-[0.14em] text-ink-500 uppercase">
+                  <Languages className="size-4" aria-hidden />
+                  Language
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="Language">
+                  {LANGUAGES.map((item) => {
+                    const selected = locale === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={cx(
+                          "rounded-full px-2 py-2.5 text-[0.95rem] font-bold",
+                          selected ? "bg-brand-800 text-white" : "bg-sand text-ink-700 hover:bg-sand-deep",
+                        )}
+                        onClick={() => applyLocale(item.id)}
+                      >
+                        <span translate="no">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
 
             <button
               type="button"

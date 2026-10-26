@@ -661,6 +661,12 @@ export async function setTextScaleAction(scale: string): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+export async function setLocaleAction(locale: string): Promise<void> {
+  const actor = await requireActor();
+  await (await getStore()).updateProfile(actor, { locale: locale === "es" ? "es" : "en" });
+  revalidatePath("/", "layout");
+}
+
 export async function updateSettingsAction(_state: ActionState, formData: FormData): Promise<ActionState> {
   try {
     const actor = await requireActor();
